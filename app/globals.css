@@ -1,26 +1,121 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+@theme {
+  --font-cinzel: var(--font-cinzel), serif;
+  --font-vt323: var(--font-vt323), monospace;
+  --font-sans: var(--font-outfit), sans-serif;
+  
+  --color-parchment: #F5F2EB;
+  --color-sky-blue: #87CEEB;
+  --color-baby-pink: #FFB6C1;
+  --color-gold: #FFD700;
+  --color-dungeon: #2A2A2A;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: linear-gradient(135deg, #090e17 0%, #150c13 100%);
+  background-attachment: fixed;
+  color: #F5F2EB;
+  font-family: var(--font-outfit), sans-serif;
 }
+
+/* Custom animation for blood dripping */
+@keyframes drip {
+  0% {
+    height: 0%;
+  }
+  100% {
+    height: 100%;
+  }
+}
+
+.animate-drip {
+  animation: drip 1.5s ease-out forwards;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
+}
+
+.animate-shake {
+  animation: shake 0.2s ease-in-out 0s 2;
+}
+
+/* Hide default HTML5 number input spinner arrows */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* Custom Scrollbars matching Neo-Brutalist Dark Theme */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #27272a #090e17;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #090e17;
+  border: 2px solid #000000;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border: 2px solid #000000;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #87CEEB; /* Sky Blue accent on hover */
+}
+
+::-webkit-scrollbar-button {
+  display: none;
+}
+
+/* Subtle border-radius to soften brutalist components */
+main,
+header,
+form,
+nav,
+footer,
+button,
+input,
+select,
+textarea,
+.w-full.flex.items-center,
+.border-4,
+.border-2 {
+  border-radius: 8px !important;
+}
+
+/* Fix nested header overflow corners */
+main {
+  overflow: hidden;
+}
+
+input[type="date"] {
+  color-scheme: dark;
+}
+
+.trend-point {
+  transition: r 0.15s ease-in-out, fill 0.15s;
+}
+
+.trend-point:hover {
+  r: 6px;
+  fill: #87CEEB !important;
+}
+
+
