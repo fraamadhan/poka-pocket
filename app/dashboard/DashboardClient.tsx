@@ -440,9 +440,9 @@ export default function DashboardClient({
     setError(null);
 
     const res = await createPocket(pocketName, pocketBalance, pocketIcon);
-    if (res.success) {
+    if (res.success && res.id) {
       const newPocket: Pocket = {
-        id: crypto.randomUUID(),
+        id: res.id,
         name: pocketName.trim(),
         balance: val.toFixed(2),
         icon: pocketIcon,
@@ -554,9 +554,9 @@ export default function DashboardClient({
     setError(null);
 
     const res = await createCategory(categoryName, categoryBudget, categoryIcon);
-    if (res.success) {
+    if (res.success && res.id) {
       const newCategory: Category = {
-        id: crypto.randomUUID(),
+        id: res.id,
         name: categoryName.trim(),
         budgetLimit: limitVal,
         icon: categoryIcon,

@@ -108,15 +108,16 @@ export async function createCategory(name: string, budgetLimit: string | null, i
 
   try {
     const userId = await getUserId();
+    const categoryId = crypto.randomUUID();
     await db.insert(categories).values({
-      id: crypto.randomUUID(),
+      id: categoryId,
       userId,
       name: name.trim(),
       budgetLimit: finalBudget,
       icon,
     });
     revalidatePath("/dashboard");
-    return { success: true };
+    return { success: true, id: categoryId };
   } catch (error: any) {
     console.error("Failed to create category:", error);
     return { error: error.message || "Failed to create category." };

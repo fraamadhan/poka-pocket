@@ -38,18 +38,22 @@ export async function createPocket(name: string, balance: string, icon: string =
   if (isNaN(numericBalance)) {
     return { error: "Invalid balance format." };
   }
+  if (numericBalance < 0) {
+    return { error: "Pocket balance cannot be less than 0." };
+  }
 
   try {
     const userId = await getUserId();
+    const pocketId = crypto.randomUUID();
     await db.insert(pockets).values({
-      id: crypto.randomUUID(),
+      id: pocketId,
       userId,
       name: name.trim(),
       balance: numericBalance.toFixed(2),
       icon,
     });
     revalidatePath("/dashboard");
-    return { success: true };
+    return { success: true, id: pocketId };
   } catch (error: any) {
     console.error("Failed to create pocket:", error);
     return { error: error.message || "Failed to create pocket." };
@@ -67,6 +71,9 @@ export async function updatePocket(id: string, name: string, balance: string, ic
   const numericBalance = parseFloat(normalizedBalance);
   if (isNaN(numericBalance)) {
     return { error: "Invalid balance format." };
+  }
+  if (numericBalance < 0) {
+    return { error: "Pocket balance cannot be less than 0." };
   }
 
   try {
