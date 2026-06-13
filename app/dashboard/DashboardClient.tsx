@@ -356,10 +356,6 @@ export default function DashboardClient({
       }
       if (e.key >= "0" && e.key <= "9") {
         setTransAmount((prev) => {
-          if (prev.includes(".")) {
-            const parts = prev.split(".");
-            if (parts[1] && parts[1].length >= 2) return prev;
-          }
           if (prev === "0" && e.key === "0") return prev;
           if (prev === "0") return e.key;
           return prev + e.key;

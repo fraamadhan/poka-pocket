@@ -72,12 +72,6 @@ export default function TransactionForm({
       });
     } else {
       setTransAmount((prev) => {
-        if (prev.includes(".")) {
-          const parts = prev.split(".");
-          if (parts[1] && parts[1].length >= 2) {
-            return prev;
-          }
-        }
         if (prev === "0" && key === "0") return prev;
         if (prev === "0" && key !== "0") return key;
         return prev + key;
