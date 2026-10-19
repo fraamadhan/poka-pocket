@@ -17,6 +17,7 @@ import LogsTab from "./components/LogsTab";
 import AnalyticsTab from "./components/AnalyticsTab";
 import ExportsTab from "./components/ExportsTab";
 import FeedbackTab from "./components/FeedbackTab";
+import TransferModal, { TransferSuccessData } from "./components/TransferModal";
 
 interface Pocket {
   id: string;
@@ -268,13 +269,18 @@ export default function DashboardClient({
   // Toast state
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
+  const [toastType, setToastType] = useState<"error" | "success">("error");
   const [toastKey, setToastKey] = useState(0);
 
-  const triggerToast = (message: string) => {
+  const triggerToast = (message: string, type: "error" | "success" = "error") => {
     setToastMessage(message);
+    setToastType(type);
     setToastKey((prev) => prev + 1);
     setShowToast(true);
   };
+
+  // Transfer Modal State
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
 
   // Feedback State
   const [feedbackRating, setFeedbackRating] = useState<number | null>(null);
@@ -772,7 +778,49 @@ export default function DashboardClient({
     setIsCreatingCategory(false);
     setEditingCategory(null);
     setIsLoggingTransaction(false);
+    setIsTransferModalOpen(false);
     setError(null);
+  };
+
+  const handleTransferSuccess = (data: TransferSuccessData) => {
+    // 1. Update balances of source and destination pockets
+    setPocketsList((prev) =>
+      prev.map((p) => {
+        if (p.id === data.fromPocketId) {
+          return { ...p, balance: data.newFromBalance };
+        }
+        if (p.id === data.toPocketId) {
+          return { ...p, balance: data.newToBalance };
+        }
+        return p;
+      })
+    );
+
+    // 2. Add both transfer transaction records to the activity feed
+    const cleanNote = data.note ? ` (${data.note})` : "";
+    const expenseTrans: Transaction = {
+      id: data.outTransId,
+      amount: data.amount,
+      type: "expense",
+      description: `Transfer to ${data.toPocketName}${cleanNote}`,
+      createdAt: new Date(),
+      pocketName: data.fromPocketName,
+      categoryName: null,
+      categoryIcon: null,
+    };
+    const incomeTrans: Transaction = {
+      id: data.inTransId,
+      amount: data.amount,
+      type: "income",
+      description: `Transfer from ${data.fromPocketName}${cleanNote}`,
+      createdAt: new Date(),
+      pocketName: data.toPocketName,
+      categoryName: null,
+      categoryIcon: null,
+    };
+
+    setTransactionsList((prev) => [expenseTrans, incomeTrans, ...prev]);
+    setRecentPage(1);
   };
 
   const handleFeedbackSubmit = async (e: React.FormEvent) => {
@@ -1047,6 +1095,7 @@ export default function DashboardClient({
               handleOpenCreatePocket={handleOpenCreatePocket}
               handleOpenEditPocket={handleOpenEditPocket}
               handleDeletePocket={handleDeletePocket}
+              handleOpenTransfer={() => setIsTransferModalOpen(true)}
               handleOpenCreateCategory={handleOpenCreateCategory}
               handleOpenEditCategory={handleOpenEditCategory}
               handleDeleteCategory={handleDeleteCategory}
@@ -1206,20 +1255,29 @@ export default function DashboardClient({
         </div>
       )}
 
-      {/* Error Alert Toast */}
+      {/* Transfer Funds Modal */}
+      <TransferModal
+        isOpen={isTransferModalOpen}
+        pocketsList={pocketsList}
+        onClose={() => setIsTransferModalOpen(false)}
+        onTransferSuccess={handleTransferSuccess}
+        triggerToast={(msg) => triggerToast(msg, "success")}
+      />
+
+      {/* Toast Notification */}
       {showToast && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div 
             key={toastKey}
-            className="w-full max-w-sm bg-zinc-900 border-4 border-black text-white p-4 shadow-[6px_6px_0px_rgba(0,0,0,0.8)] animate-shake flex flex-col gap-2 relative overflow-hidden"
+            className={`w-full max-w-sm bg-zinc-900 border-4 border-black text-white p-4 shadow-[6px_6px_0px_rgba(0,0,0,0.8)] ${toastType === "error" ? "animate-shake" : "animate-scaleUp"} flex flex-col gap-2 relative overflow-hidden`}
           >
             <div className="flex items-start gap-3 mt-1">
-              <span className="text-2xl">⚠️</span>
+              <span className="text-2xl">{toastType === "success" ? "🎉" : "⚠️"}</span>
               <div className="flex-1">
-                <h3 className="font-cinzel text-red-500 font-extrabold tracking-widest text-sm uppercase">
-                  ⚠️ ERROR OCCURRED
+                <h3 className={`font-cinzel font-extrabold tracking-widest text-sm uppercase ${toastType === "success" ? "text-sky-blue" : "text-red-500"}`}>
+                  {toastType === "success" ? "ACTION COMPLETE" : "ERROR OCCURRED"}
                 </h3>
-                <p className="font-vt323 text-red-300 text-sm mt-1 leading-snug">
+                <p className={`font-vt323 text-sm mt-1 leading-snug ${toastType === "success" ? "text-zinc-200" : "text-red-300"}`}>
                   {toastMessage}
                 </p>
               </div>
@@ -1228,7 +1286,7 @@ export default function DashboardClient({
             <div className="flex justify-end gap-2 mt-2">
               <button 
                 onClick={() => setShowToast(false)}
-                className="px-3 py-1 bg-red-700 hover:bg-red-800 text-white font-cinzel text-xs font-bold border-2 border-black shadow-[2px_2px_0px_#000] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all cursor-pointer"
+                className={`px-3 py-1 font-cinzel text-xs font-bold border-2 border-black shadow-[2px_2px_0px_#000] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all cursor-pointer ${toastType === "success" ? "bg-sky-blue hover:bg-sky-300 text-dungeon" : "bg-red-700 hover:bg-red-800 text-white"}`}
               >
                 DISMISS
               </button>

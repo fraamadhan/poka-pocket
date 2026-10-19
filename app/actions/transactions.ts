@@ -5,6 +5,7 @@ import { transactions, pockets, categories } from "@/db/schema";
 import { auth } from "@/auth";
 import { eq, and, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { parseCurrencyInput } from "@/lib/currency";
 
 // Helper to get authenticated user ID
 async function getUserId() {
@@ -53,8 +54,7 @@ export async function createTransaction(
     return { error: "Pocket is required." };
   }
 
-  const normalizedAmount = amount.replace(',', '.');
-  const numericAmount = parseFloat(normalizedAmount);
+  const numericAmount = parseCurrencyInput(amount);
   if (isNaN(numericAmount) || numericAmount <= 0) {
     return { error: "Amount must be a valid positive number." };
   }
@@ -110,5 +110,124 @@ export async function createTransaction(
   } catch (error: any) {
     console.error("Transaction error:", error);
     return { error: error.message || "Failed to process transaction." };
+  }
+}
+
+export async function transferPocketBalance(
+  fromPocketId: string,
+  toPocketId: string,
+  amount: string,
+  note?: string,
+) {
+  // validation pocket 
+  if (!fromPocketId || !toPocketId) {
+    return { error: "Choose both source and destination pockets."}
+  }
+
+  if (fromPocketId === toPocketId) {
+    return { error: "Source and destination pocket cannot be the same."}
+  }
+
+  // validation amount
+  const numericAmount = parseCurrencyInput(amount);
+  if (isNaN(numericAmount) || numericAmount <= 0) {
+    return { error: "Transfer amount must be greater than 0." };
+  }
+
+  try {
+    const userId = await getUserId();
+
+    const result = await db.transaction(async (tx) => {
+      // fetch both pocket data and verify the user
+      const [fromPocket] = await tx
+        .select()
+        .from(pockets)
+        .where(and(eq(pockets.id, fromPocketId), eq(pockets.userId, userId)))
+        .limit(1);
+
+      const [toPocket]= await tx
+        .select()
+        .from(pockets)
+        .where(and(eq(pockets.id, toPocketId), eq(pockets.userId, userId)))
+        .limit(1);
+
+      // check if pocket is found and owner is correct
+      if (!fromPocket || !toPocket) {
+        throw new Error("Pocket not found");
+      }
+
+      // check balance
+      const fromBalance = parseFloat(fromPocket.balance);
+      if (fromBalance < numericAmount) {
+        throw new Error(`Insufficient balance in ${fromPocket.name}`);
+      }
+
+      // calculate new balance
+      const newFromBalance = (fromBalance - numericAmount).toFixed(2);
+      const newToBalance = (parseFloat(toPocket.balance) + numericAmount).toFixed(2);
+
+      // update both pockets amount
+      await tx
+        .update(pockets)
+        .set({ balance: newFromBalance })
+        .where(eq(pockets.id, fromPocketId))
+
+      await tx
+        .update(pockets)
+        .set({ balance: newToBalance })
+        .where(eq(pockets.id, toPocketId))
+
+      const outTransId = crypto.randomUUID();
+      const inTransId = crypto.randomUUID();
+      const cleanNote = note?.trim() ? ` (${note.trim()})` : "";
+
+      // record the transaction history
+      await tx.insert(transactions).values({
+        id: outTransId,
+        userId,
+        pocketId: fromPocketId,
+        categoryId: null,
+        amount: numericAmount.toFixed(2),
+        type: "expense",
+        description: `Transfer to ${toPocket.name}${cleanNote}`,
+        createdAt: new Date(),
+      });
+
+      // insert into destination pocket
+      await tx.insert(transactions).values({
+        id: inTransId,
+        userId,
+        pocketId: toPocketId,
+        categoryId: null,
+        amount: numericAmount.toFixed(2),
+        type: "income",
+        description: `Transfer from ${fromPocket.name}${cleanNote}`,
+        createdAt: new Date(),
+      });
+
+      return {
+        fromPocketId,
+        newFromBalance,
+        toPocketId,
+        newToBalance,
+        fromPocketName: fromPocket.name,
+        toPocketName: toPocket.name,
+        amount: numericAmount.toFixed(2),
+        outTransId,
+        inTransId,
+        note: note?.trim() || null,
+      };
+    });
+
+    // refresh cache
+    revalidatePath("/dashboard");
+    revalidatePath(`/pocket/${fromPocketId}`);
+    revalidatePath(`/pocket/${toPocketId}`);
+
+    return { success: true, ...result };
+    
+  } catch (error: any) {
+    console.error("Transfer error: ", error);
+    return { error: error.message || "Failed to transfer"}
   }
 }

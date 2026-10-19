@@ -38,6 +38,7 @@ interface LogsTabProps {
   handleOpenCreatePocket: () => void;
   handleOpenEditPocket: (pocket: Pocket) => void;
   handleDeletePocket: (id: string) => void;
+  handleOpenTransfer: () => void;
   handleOpenCreateCategory: () => void;
   handleOpenEditCategory: (category: Category) => void;
   handleDeleteCategory: (id: string) => void;
@@ -85,6 +86,7 @@ export default function LogsTab({
   handleOpenCreatePocket,
   handleOpenEditPocket,
   handleDeletePocket,
+  handleOpenTransfer,
   handleOpenCreateCategory,
   handleOpenEditCategory,
   handleDeleteCategory,
@@ -106,12 +108,23 @@ export default function LogsTab({
       <div id="tour-pockets" className={`flex flex-col gap-3 transition-all ${tourActive && tourStep === 1 ? "border-4 border-sky-blue p-2 bg-sky-blue/5 animate-pulse rounded-lg" : ""}`}>
         <div className="flex justify-between items-center">
           <h3 className="font-cinzel font-bold text-md text-white">Your Pockets</h3>
-          <button 
-            onClick={handleOpenCreatePocket}
-            className={`px-2 py-1 bg-sky-blue border-2 border-black text-dungeon text-xs font-bold shadow-[2px_2px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 ${tourActive && tourStep === 1 ? "scale-105" : ""}`}
-          >
-            + NEW POCKET
-          </button>
+          <div className="flex gap-1.5">
+            {pocketsList.length >= 2 && (
+              <button 
+                onClick={handleOpenTransfer}
+                className="px-2 py-1 bg-yellow-400 border-2 border-black text-dungeon text-xs font-bold shadow-[2px_2px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 cursor-pointer flex items-center gap-1"
+                title="Transfer funds between pockets"
+              >
+                🔄 TRANSFER
+              </button>
+            )}
+            <button 
+              onClick={handleOpenCreatePocket}
+              className={`px-2 py-1 bg-sky-blue border-2 border-black text-dungeon text-xs font-bold shadow-[2px_2px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 ${tourActive && tourStep === 1 ? "scale-105" : ""}`}
+            >
+              + NEW POCKET
+            </button>
+          </div>
         </div>
         
         {pocketsList.length === 0 ? (

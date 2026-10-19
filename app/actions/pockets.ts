@@ -5,6 +5,7 @@ import { pockets } from "@/db/schema";
 import { auth } from "@/auth";
 import { eq, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { parseCurrencyInput } from "@/lib/currency";
 
 // Helper to get authenticated user ID
 async function getUserId() {
@@ -18,10 +19,27 @@ async function getUserId() {
 export async function getPockets() {
   try {
     const userId = await getUserId();
-    const result = await db.query.pockets.findMany({
+    let result = await db.query.pockets.findMany({
       where: eq(pockets.userId, userId),
       orderBy: (pockets, { asc }) => [asc(pockets.createdAt)],
     });
+
+    // Safe starter pocket seeding for new users
+    if (result.length === 0) {
+      const defaultPocketId = crypto.randomUUID();
+      await db.insert(pockets).values({
+        id: defaultPocketId,
+        userId,
+        name: "Main Wallet",
+        balance: "0.00",
+        icon: "wallet",
+      });
+      result = await db.query.pockets.findMany({
+        where: eq(pockets.userId, userId),
+        orderBy: (pockets, { asc }) => [asc(pockets.createdAt)],
+      });
+    }
+
     return { data: result };
   } catch (error: any) {
     console.error("Failed to fetch pockets:", error);
@@ -33,8 +51,7 @@ export async function createPocket(name: string, balance: string, icon: string =
   if (!name || name.trim() === "") {
     return { error: "Pocket name cannot be empty." };
   }
-  const normalizedBalance = balance.replace(',', '.');
-  const numericBalance = parseFloat(normalizedBalance);
+  const numericBalance = parseCurrencyInput(balance);
   if (isNaN(numericBalance)) {
     return { error: "Invalid balance format." };
   }
@@ -67,8 +84,7 @@ export async function updatePocket(id: string, name: string, balance: string, ic
   if (!name || name.trim() === "") {
     return { error: "Pocket name cannot be empty." };
   }
-  const normalizedBalance = balance.replace(',', '.');
-  const numericBalance = parseFloat(normalizedBalance);
+  const numericBalance = parseCurrencyInput(balance);
   if (isNaN(numericBalance)) {
     return { error: "Invalid balance format." };
   }
