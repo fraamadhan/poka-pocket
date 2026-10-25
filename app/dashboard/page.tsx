@@ -6,7 +6,7 @@ import { getPockets } from "@/app/actions/pockets";
 import { getCategories } from "@/app/actions/categories";
 import { getRecentTransactions } from "@/app/actions/transactions";
 import { getExportHistory } from "@/app/actions/exports";
-import { getRecurringRules } from "@/app/actions/recurring";
+import { getRecurringRules, processPendingRecurringRules } from "@/app/actions/recurring";
 
 export const metadata: Metadata = {
   title: "Dashboard | Poka Pocket",
@@ -18,6 +18,11 @@ export default async function DashboardPage() {
 
   if (!session?.user) {
     redirect("/");
+  }
+
+  // Automatic catch-up: process any overdue recurring transactions (protected by atomic row lock)
+  if (session.user.id) {
+    await processPendingRecurringRules(session.user.id, { shouldRevalidate: false });
   }
 
   const pocketsResponse = await getPockets();

@@ -151,6 +151,12 @@ export async function createRecurringRule(data: {
       isActive: true,
     });
 
+    // If scheduled for today (or already due), process its first cycle immediately
+    const now = new Date();
+    if (nextRun <= now) {
+      await processPendingRecurringRules(userId, { shouldRevalidate: false });
+    }
+
     revalidatePath("/dashboard");
     return { success: true, id: ruleId };
   } catch (error: any) {
@@ -258,6 +264,11 @@ export async function updateRecurringRule(
         nextRunDate: parsedNext,
       })
       .where(and(eq(recurringRules.id, ruleId), eq(recurringRules.userId, userId)));
+
+    // If updated date is due, process immediately
+    if (parsedNext <= today) {
+      await processPendingRecurringRules(userId, { shouldRevalidate: false });
+    }
 
     revalidatePath("/dashboard");
     return { success: true };
@@ -447,6 +458,16 @@ export async function processPendingRecurringRules(
           if (!lockedRule) {
             // Rule was already processed by another concurrent request
             return;
+          }
+
+          // 2. Anti-duplicate cooldown guard: minimum frequency is daily (24h),
+          // so a rule must never execute more than once within 60 seconds.
+          if (lockedRule.lastRunDate) {
+            const timeSinceLastRun = now.getTime() - new Date(lockedRule.lastRunDate).getTime();
+            if (timeSinceLastRun < 60000) {
+              details.push(`Rule "${lockedRule.description}" skipped: already processed ${Math.round(timeSinceLastRun / 1000)}s ago.`);
+              return;
+            }
           }
 
           // Fetch pocket with lock
