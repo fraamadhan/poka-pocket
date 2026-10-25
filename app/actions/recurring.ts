@@ -278,50 +278,43 @@ export async function triggerRecurringRuleNow(ruleId: string): Promise<{
     const userId = await getUserId();
     const now = new Date();
 
-    const [rule] = await db
-      .select()
-      .from(recurringRules)
-      .where(and(eq(recurringRules.id, ruleId), eq(recurringRules.userId, userId)))
-      .limit(1);
+    const result = await db.transaction(async (tx) => {
+      const [rule] = await tx
+        .select()
+        .from(recurringRules)
+        .where(and(eq(recurringRules.id, ruleId), eq(recurringRules.userId, userId)))
+        .for("update");
 
-    if (!rule) {
-      return { success: false, error: "Recurring rule not found." };
-    }
+      if (!rule) {
+        throw new Error("Recurring rule not found.");
+      }
 
-    const [pocket] = await db
-      .select()
-      .from(pockets)
-      .where(and(eq(pockets.id, rule.pocketId), eq(pockets.userId, userId)))
-      .limit(1);
+      const [pocket] = await tx
+        .select()
+        .from(pockets)
+        .where(and(eq(pockets.id, rule.pocketId), eq(pockets.userId, userId)))
+        .for("update");
 
-    if (!pocket) {
-      return { success: false, error: "Target pocket not found." };
-    }
+      if (!pocket) {
+        throw new Error("Target pocket not found.");
+      }
 
-    if (rule.type === "expense" && pocket.isLocked) {
-      return {
-        success: false,
-        error: `Pocket "${pocket.name}" is locked for savings. Unlock it before running an expense.`,
-      };
-    }
+      if (rule.type === "expense" && pocket.isLocked) {
+        throw new Error(`Pocket "${pocket.name}" is locked for savings. Unlock it before running an expense.`);
+      }
 
-    const ruleAmount = parseFloat(rule.amount);
-    const currentBalance = parseFloat(pocket.balance);
+      const ruleAmount = parseFloat(rule.amount);
+      const currentBalance = parseFloat(pocket.balance);
 
-    if (rule.type === "expense" && currentBalance < ruleAmount) {
-      return {
-        success: false,
-        error: `Insufficient balance in pocket "${pocket.name}". Required: Rp ${ruleAmount.toLocaleString("id-ID")}, Available: Rp ${currentBalance.toLocaleString("id-ID")}. Please top up first.`,
-      };
-    }
+      if (rule.type === "expense" && currentBalance < ruleAmount) {
+        throw new Error(
+          `Insufficient balance in pocket "${pocket.name}". Required: Rp ${ruleAmount.toLocaleString("id-ID")}, Available: Rp ${currentBalance.toLocaleString("id-ID")}. Please top up first.`
+        );
+      }
 
-    const nextDate = advanceNextRunDate(now, rule.frequency);
-    let updatedBalance = currentBalance;
-
-    await db.transaction(async (tx) => {
+      const nextDate = advanceNextRunDate(now, rule.frequency);
       const newBalance =
         rule.type === "income" ? currentBalance + ruleAmount : currentBalance - ruleAmount;
-      updatedBalance = newBalance;
 
       // Update pocket balance
       await tx
@@ -351,14 +344,20 @@ export async function triggerRecurringRuleNow(ruleId: string): Promise<{
           isActive: true, // Resume if paused
         })
         .where(eq(recurringRules.id, rule.id));
+
+      return {
+        nextRunDate: nextDate.toISOString(),
+        newBalance: newBalance.toFixed(2),
+        pocketId: rule.pocketId,
+      };
     });
 
     revalidatePath("/dashboard");
     return {
       success: true,
-      nextRunDate: nextDate.toISOString(),
-      newBalance: updatedBalance.toFixed(2),
-      pocketId: rule.pocketId,
+      nextRunDate: result.nextRunDate,
+      newBalance: result.newBalance,
+      pocketId: result.pocketId,
     };
   } catch (error: any) {
     console.error("Failed to run recurring rule now:", error);
@@ -432,12 +431,30 @@ export async function processPendingRecurringRules(
     for (const rule of dueRules) {
       try {
         await db.transaction(async (tx) => {
-          // Fetch pocket
+          // Re-verify and lock the rule atomically to prevent race conditions / duplicate execution
+          const [lockedRule] = await tx
+            .select()
+            .from(recurringRules)
+            .where(
+              and(
+                eq(recurringRules.id, rule.id),
+                eq(recurringRules.isActive, true),
+                lte(recurringRules.nextRunDate, now)
+              )
+            )
+            .for("update");
+
+          if (!lockedRule) {
+            // Rule was already processed by another concurrent request
+            return;
+          }
+
+          // Fetch pocket with lock
           const [pocket] = await tx
             .select()
             .from(pockets)
-            .where(eq(pockets.id, rule.pocketId))
-            .limit(1);
+            .where(eq(pockets.id, lockedRule.pocketId))
+            .for("update");
 
           if (!pocket) {
             // Pocket was deleted; deactivate rule to prevent future errors
