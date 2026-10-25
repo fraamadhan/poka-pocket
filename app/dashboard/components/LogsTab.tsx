@@ -6,6 +6,10 @@ interface Pocket {
   name: string;
   balance: string;
   icon: string;
+  isGoal?: boolean;
+  targetAmount?: string | null;
+  targetDate?: Date | string | null;
+  isLocked?: boolean;
   createdAt: Date;
 }
 
@@ -39,6 +43,8 @@ interface LogsTabProps {
   handleOpenEditPocket: (pocket: Pocket) => void;
   handleDeletePocket: (id: string) => void;
   handleOpenTransfer: () => void;
+  handleOpenRecurring?: () => void;
+  recurringCount?: number;
   handleOpenCreateCategory: () => void;
   handleOpenEditCategory: (category: Category) => void;
   handleDeleteCategory: (id: string) => void;
@@ -87,6 +93,8 @@ export default function LogsTab({
   handleOpenEditPocket,
   handleDeletePocket,
   handleOpenTransfer,
+  handleOpenRecurring,
+  recurringCount = 0,
   handleOpenCreateCategory,
   handleOpenEditCategory,
   handleDeleteCategory,
@@ -108,7 +116,16 @@ export default function LogsTab({
       <div id="tour-pockets" className={`flex flex-col gap-3 transition-all ${tourActive && tourStep === 1 ? "border-4 border-sky-blue p-2 bg-sky-blue/5 animate-pulse rounded-lg" : ""}`}>
         <div className="flex justify-between items-center">
           <h3 className="font-cinzel font-bold text-md text-white">Your Pockets</h3>
-          <div className="flex gap-1.5">
+          <div className="flex gap-1.5 flex-wrap justify-end">
+            {handleOpenRecurring && (
+              <button 
+                onClick={handleOpenRecurring}
+                className="px-2 py-1 bg-amber-400 border-2 border-black text-dungeon text-xs font-bold shadow-[2px_2px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 cursor-pointer flex items-center gap-1"
+                title="Manage auto recurring transactions"
+              >
+                ⏰ AUTO {recurringCount > 0 ? `(${recurringCount})` : ""}
+              </button>
+            )}
             {pocketsList.length >= 2 && (
               <button 
                 onClick={handleOpenTransfer}
@@ -132,39 +149,115 @@ export default function LogsTab({
             No pockets created yet. Click "+ NEW POCKET" to get started!
           </p>
         ) : (
-          <div className="flex flex-col gap-2.5 max-h-[235px] overflow-y-auto pr-1 pb-2">
-            {pocketsList.map((pocket) => (
-              <div 
-                key={pocket.id} 
-                className="w-full flex items-center justify-between border-4 border-black p-2 bg-zinc-950 shadow-[2px_2px_0px_#000] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-[1px_1px_0px_#000] transition-all text-white"
-              >
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="w-8 h-8 bg-sky-blue border-2 border-black rounded flex items-center justify-center text-md text-dungeon shadow-[1px_1px_0px_#000] flex-shrink-0">
-                    {pocket.icon === "wallet" ? "💼" : pocket.icon === "cash" ? "🪙" : "🏦"}
+          <div className="flex flex-col gap-2.5 max-h-[320px] overflow-y-auto pr-1 pb-2">
+            {pocketsList.map((pocket) => {
+              const currentBalance = parseFloat(pocket.balance) || 0;
+              const target = pocket.isGoal && pocket.targetAmount ? parseFloat(pocket.targetAmount) : null;
+              const progressPercent = target && target > 0 ? Math.min(100, Math.max(0, (currentBalance / target) * 100)) : 0;
+              const isGoalReached = target !== null && target > 0 && currentBalance >= target;
+              const remaining = target !== null && target > 0 ? Math.max(0, target - currentBalance) : 0;
+              const isOverdue = !!(pocket.targetDate && new Date(pocket.targetDate) < new Date() && !isGoalReached);
+
+              return (
+                <div 
+                  key={pocket.id} 
+                  className={`w-full flex flex-col border-4 border-black p-2.5 bg-zinc-950 shadow-[2px_2px_0px_#000] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-[1px_1px_0px_#000] transition-all text-white ${
+                    pocket.isGoal ? (isGoalReached ? "border-amber-400 bg-amber-950/10" : "border-amber-500/80") : ""
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <div className={`w-8 h-8 ${pocket.isGoal ? (isGoalReached ? "bg-amber-400" : "bg-yellow-400") : "bg-sky-blue"} border-2 border-black rounded flex items-center justify-center text-md text-dungeon shadow-[1px_1px_0px_#000] flex-shrink-0`}>
+                        {pocket.icon === "wallet" ? "💼" : pocket.icon === "cash" ? "🪙" : pocket.icon === "target" ? "🎯" : "🏦"}
+                      </div>
+                      <div className="text-left min-w-0 flex-1 pr-2">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <h4 className="font-bold text-white text-sm truncate" title={pocket.name}>
+                            {pocket.name}
+                          </h4>
+                          {pocket.isLocked && (
+                            <span className="text-[10px] px-1 py-0.2 bg-zinc-800 border border-zinc-600 text-zinc-300 font-bold rounded flex items-center gap-0.5" title="Locked Pocket">
+                              🔒 Locked
+                            </span>
+                          )}
+                          {pocket.isGoal && isGoalReached && (
+                            <span className="text-[10px] px-1.5 py-0.2 bg-amber-400 border border-black text-black font-extrabold rounded animate-bounce shadow-[1px_1px_0px_#000]">
+                              🏆 GOAL REACHED!
+                            </span>
+                          )}
+                          {isOverdue && (
+                            <span className="text-[10px] px-1 py-0.2 bg-red-950 border border-red-700 text-red-300 font-bold rounded">
+                              ⚠️ Overdue
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-zinc-300 font-mono break-all leading-tight mt-0.5">
+                          Rp {currentBalance.toLocaleString("id-ID")}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-1.5 flex-shrink-0">
+                      <button 
+                        onClick={() => handleOpenEditPocket(pocket)}
+                        className="p-1 bg-sky-blue border border-black shadow-[1px_1px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all text-xs text-dungeon cursor-pointer"
+                        title="Edit Pocket"
+                      >
+                        ✏️
+                      </button>
+                      <button 
+                        onClick={() => handleDeletePocket(pocket.id)}
+                        className={`p-1 border border-black shadow-[1px_1px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all text-xs text-dungeon cursor-pointer ${
+                          pocket.isLocked ? "bg-zinc-700 text-zinc-400 opacity-60 cursor-not-allowed" : "bg-baby-pink"
+                        }`}
+                        title={pocket.isLocked ? "Locked pocket (cannot be deleted)" : "Delete Pocket"}
+                      >
+                        🗑️
+                      </button>
+                    </div>
                   </div>
-                  <div className="text-left min-w-0 flex-1 pr-3">
-                    <h4 className="font-bold text-white text-sm truncate" title={pocket.name}>{pocket.name}</h4>
-                    <p className="text-xs text-zinc-400 font-mono break-all leading-tight mt-0.5">
-                      Rp {parseFloat(pocket.balance).toLocaleString("id-ID")}
-                    </p>
-                  </div>
+
+                  {/* Saving Goal Progress Bar (RPG XP Style) */}
+                  {pocket.isGoal && target !== null && (
+                    <div className="mt-2 pt-2 border-t border-zinc-800/80 flex flex-col gap-1">
+                      <div className="flex justify-between items-center text-[10px] font-mono text-zinc-300 font-bold">
+                        <span className="text-amber-300 flex items-center gap-1">
+                          🎯 Target: Rp {target.toLocaleString("id-ID")}
+                        </span>
+                        <span className={isGoalReached ? "text-amber-400 font-extrabold" : "text-zinc-300"}>
+                          {progressPercent.toFixed(0)}%
+                        </span>
+                      </div>
+
+                      {/* XP / Mana Bar */}
+                      <div className="w-full h-3 bg-zinc-900 border-2 border-black overflow-hidden shadow-[1px_1px_0px_#000] relative">
+                        <div 
+                          className={`h-full transition-all duration-500 ${
+                            isGoalReached 
+                              ? "bg-amber-400 animate-pulse" 
+                              : "bg-gradient-to-r from-amber-500 to-yellow-300"
+                          }`}
+                          style={{ width: `${progressPercent}%` }}
+                        />
+                      </div>
+
+                      <div className="flex justify-between items-center text-[9px] text-zinc-400">
+                        <span>
+                          {isGoalReached 
+                            ? "✨ Target amount reached!" 
+                            : `Rp ${remaining.toLocaleString("id-ID")} remaining`}
+                        </span>
+                        {pocket.targetDate && (
+                          <span className={isOverdue ? "text-red-400 font-bold" : ""}>
+                            📅 {new Date(pocket.targetDate).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div className="flex gap-1.5 flex-shrink-0">
-                  <button 
-                    onClick={() => handleOpenEditPocket(pocket)}
-                    className="p-1 bg-sky-blue border border-black shadow-[1px_1px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all text-xs text-dungeon"
-                  >
-                    ✏️
-                  </button>
-                  <button 
-                    onClick={() => handleDeletePocket(pocket.id)}
-                    className="p-1 bg-baby-pink border border-black shadow-[1px_1px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all text-xs text-dungeon"
-                  >
-                    🗑️
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

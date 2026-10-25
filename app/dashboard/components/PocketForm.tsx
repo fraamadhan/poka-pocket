@@ -1,10 +1,14 @@
 import React from "react";
 
-interface Pocket {
+export interface Pocket {
   id: string;
   name: string;
   balance: string;
   icon: string;
+  isGoal?: boolean;
+  targetAmount?: string | null;
+  targetDate?: Date | string | null;
+  isLocked?: boolean;
   createdAt: Date;
 }
 
@@ -19,6 +23,14 @@ interface PocketFormProps {
   setPocketBalance: (val: string) => void;
   pocketIcon: string;
   setPocketIcon: (val: string) => void;
+  isGoal: boolean;
+  setIsGoal: (val: boolean) => void;
+  targetAmount: string;
+  setTargetAmount: (val: string) => void;
+  targetDate: string;
+  setTargetDate: (val: string) => void;
+  isLocked: boolean;
+  setIsLocked: (val: boolean) => void;
   isSubmitting: boolean;
   error: string | null;
 }
@@ -34,6 +46,14 @@ export default function PocketForm({
   setPocketBalance,
   pocketIcon,
   setPocketIcon,
+  isGoal,
+  setIsGoal,
+  targetAmount,
+  setTargetAmount,
+  targetDate,
+  setTargetDate,
+  isLocked,
+  setIsLocked,
   isSubmitting,
   error,
 }: PocketFormProps) {
@@ -49,14 +69,16 @@ export default function PocketForm({
           type="text" 
           value={pocketName} 
           onChange={(e) => setPocketName(e.target.value)}
-          placeholder="e.g. Cash, BRI, Mandiri" 
+          placeholder="e.g. Vacation Savings, Cash, Bank BRI" 
           className="p-2 border-2 border-black text-sm bg-zinc-950 text-white outline-none focus:bg-zinc-900"
           required
         />
       </div>
 
       <div className="flex flex-col gap-1 text-left">
-        <label className="text-xs font-bold text-zinc-300">Balance (Rp)</label>
+        <label className="text-xs font-bold text-zinc-300">
+          {isCreatingPocket ? "Starting Balance (Rp)" : "Balance (Rp)"}
+        </label>
         <input 
           type="number" 
           step="0.01"
@@ -70,22 +92,101 @@ export default function PocketForm({
 
       <div className="flex flex-col gap-1 text-left">
         <label className="text-xs font-bold text-zinc-300">Pocket Icon</label>
-        <div className="flex gap-2">
+        <div className="grid grid-cols-4 gap-1.5">
           {[
-            { id: "wallet", label: "💼 E-Wallet" },
+            { id: "wallet", label: "💼 Wallet" },
             { id: "cash", label: "🪙 Cash" },
             { id: "bank", label: "🏦 Bank" },
+            { id: "target", label: "🎯 Goal" },
           ].map((opt) => (
             <button
               key={opt.id}
               type="button"
               onClick={() => setPocketIcon(opt.id)}
-              className={`flex-1 py-1.5 border-2 border-black text-xs font-bold transition-all shadow-[2px_2px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 ${pocketIcon === opt.id ? "bg-sky-blue text-dungeon" : "bg-zinc-950 text-zinc-300 hover:bg-zinc-900"}`}
+              className={`py-1.5 border-2 border-black text-xs font-bold transition-all shadow-[2px_2px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 ${pocketIcon === opt.id ? "bg-sky-blue text-dungeon" : "bg-zinc-950 text-zinc-300 hover:bg-zinc-900"}`}
             >
               {opt.label}
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Target Menabung (Saving Goal) Section */}
+      <div className="border-2 border-black bg-zinc-950 p-3 flex flex-col gap-2.5">
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={isGoal}
+            onChange={(e) => {
+              const checked = e.target.checked;
+              setIsGoal(checked);
+              if (checked && pocketIcon === "wallet") {
+                setPocketIcon("target");
+              }
+              if (!checked) {
+                setIsLocked(false);
+              }
+            }}
+            className="w-4 h-4 accent-amber-400 cursor-pointer"
+          />
+          <span className="text-xs font-bold text-amber-300 flex items-center gap-1">
+            🎯 Set as Saving Goal Pocket
+          </span>
+        </label>
+
+        {isGoal && (
+          <div className="flex flex-col gap-2.5 pt-2 border-t border-zinc-800">
+            <div className="flex flex-col gap-1 text-left">
+              <label className="text-[11px] font-bold text-zinc-300">
+                Target Amount (Rp) <span className="text-amber-400">*</span>
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="1"
+                value={targetAmount}
+                onChange={(e) => setTargetAmount(e.target.value)}
+                placeholder="e.g. 500000"
+                className="p-2 border-2 border-black text-sm bg-zinc-900 text-amber-300 outline-none font-mono focus:border-amber-400"
+                required={isGoal}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1 text-left">
+              <div className="flex justify-between items-center">
+                <label className="text-[11px] font-bold text-zinc-300">Target Date (Optional)</label>
+                {targetDate && (
+                  <button
+                    type="button"
+                    onClick={() => setTargetDate("")}
+                    className="text-[10px] text-zinc-400 hover:text-white underline cursor-pointer"
+                  >
+                    Clear Date
+                  </button>
+                )}
+              </div>
+              <input
+                type="date"
+                min={new Date().toLocaleDateString("en-CA")}
+                value={targetDate}
+                onChange={(e) => setTargetDate(e.target.value)}
+                className="p-1.5 border-2 border-black text-xs bg-zinc-900 text-white outline-none focus:border-amber-400"
+              />
+            </div>
+
+            <label className="flex items-center gap-2 cursor-pointer select-none pt-1">
+              <input
+                type="checkbox"
+                checked={isLocked}
+                onChange={(e) => setIsLocked(e.target.checked)}
+                className="w-4 h-4 accent-amber-400 cursor-pointer"
+              />
+              <span className="text-xs font-semibold text-zinc-300 flex items-center gap-1">
+                🔒 Lock Pocket (Prevent expense logging / outgoing transfers)
+              </span>
+            </label>
+          </div>
+        )}
       </div>
 
       {error && (

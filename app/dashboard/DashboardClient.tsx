@@ -18,12 +18,18 @@ import AnalyticsTab from "./components/AnalyticsTab";
 import ExportsTab from "./components/ExportsTab";
 import FeedbackTab from "./components/FeedbackTab";
 import TransferModal, { TransferSuccessData } from "./components/TransferModal";
+import RecurringModal from "./components/RecurringModal";
+import { RecurringRuleItem } from "@/app/actions/recurring";
 
 interface Pocket {
   id: string;
   name: string;
   balance: string;
   icon: string;
+  isGoal?: boolean;
+  targetAmount?: string | null;
+  targetDate?: Date | string | null;
+  isLocked?: boolean;
   createdAt: Date;
 }
 
@@ -73,6 +79,7 @@ interface DashboardClientProps {
   initialCategories: Category[];
   initialTransactions: Transaction[];
   initialExports: ExportRecord[];
+  initialRecurringRules?: RecurringRuleItem[];
 }
 
 export default function DashboardClient({ 
@@ -80,7 +87,8 @@ export default function DashboardClient({
   initialPockets, 
   initialCategories, 
   initialTransactions,
-  initialExports
+  initialExports,
+  initialRecurringRules = [],
 }: DashboardClientProps) {
   // Navigation State: "logs", "analytics", "exports", or "feedback"
   const [activeTab, setActiveTab] = useState<"logs" | "analytics" | "exports" | "feedback">("logs");
@@ -244,6 +252,10 @@ export default function DashboardClient({
   const [pocketName, setPocketName] = useState("");
   const [pocketBalance, setPocketBalance] = useState("");
   const [pocketIcon, setPocketIcon] = useState("wallet");
+  const [pocketIsGoal, setPocketIsGoal] = useState(false);
+  const [pocketTargetAmount, setPocketTargetAmount] = useState("");
+  const [pocketTargetDate, setPocketTargetDate] = useState("");
+  const [pocketIsLocked, setPocketIsLocked] = useState(false);
 
   // Category States
   const [categoriesList, setCategoriesList] = useState<Category[]>(initialCategories);
@@ -281,6 +293,10 @@ export default function DashboardClient({
 
   // Transfer Modal State
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+
+  // Recurring Rules State
+  const [recurringList, setRecurringList] = useState<RecurringRuleItem[]>(initialRecurringRules);
+  const [isRecurringModalOpen, setIsRecurringModalOpen] = useState(false);
 
   // Feedback State
   const [feedbackRating, setFeedbackRating] = useState<number | null>(null);
@@ -405,6 +421,10 @@ export default function DashboardClient({
     setPocketName("");
     setPocketBalance("");
     setPocketIcon("wallet");
+    setPocketIsGoal(false);
+    setPocketTargetAmount("");
+    setPocketTargetDate("");
+    setPocketIsLocked(false);
     setError(null);
     setIsCreatingPocket(true);
     setEditingPocket(null);
@@ -417,6 +437,14 @@ export default function DashboardClient({
     setPocketName(pocket.name);
     setPocketBalance(parseFloat(pocket.balance).toString());
     setPocketIcon(pocket.icon);
+    setPocketIsGoal(pocket.isGoal || false);
+    setPocketTargetAmount(pocket.targetAmount ? parseFloat(pocket.targetAmount).toString() : "");
+    setPocketTargetDate(
+      pocket.targetDate
+        ? new Date(pocket.targetDate).toISOString().split("T")[0]
+        : ""
+    );
+    setPocketIsLocked(pocket.isLocked || false);
     setError(null);
     setEditingPocket(pocket);
     setIsCreatingPocket(false);
@@ -433,25 +461,54 @@ export default function DashboardClient({
     }
     const normalizedBalance = pocketBalance.replace(',', '.');
     const val = parseFloat(normalizedBalance);
-    if (isNaN(val)) {
-      triggerToast("Starting balance must be a valid number.");
+    if (isNaN(val) || val < 0) {
+      triggerToast("Starting balance must be a valid non-negative number.");
       return;
+    }
+
+    if (pocketIsGoal) {
+      const normalizedTarget = pocketTargetAmount.replace(',', '.');
+      const targetVal = parseFloat(normalizedTarget);
+      if (isNaN(targetVal) || targetVal <= 0) {
+        triggerToast("Target amount must be a valid number greater than 0.");
+        return;
+      }
+      if (pocketTargetDate) {
+        const todayStr = new Date().toLocaleDateString("en-CA");
+        if (pocketTargetDate < todayStr) {
+          triggerToast("Target date cannot be in the past (must be today or later).");
+          return;
+        }
+      }
     }
 
     setIsSubmitting(true);
     setError(null);
 
-    const res = await createPocket(pocketName, pocketBalance, pocketIcon);
+    const res = await createPocket(
+      pocketName,
+      pocketBalance,
+      pocketIcon,
+      pocketIsGoal,
+      pocketTargetAmount,
+      pocketTargetDate,
+      pocketIsLocked
+    );
     if (res.success && res.id) {
       const newPocket: Pocket = {
         id: res.id,
         name: pocketName.trim(),
         balance: val.toFixed(2),
         icon: pocketIcon,
+        isGoal: pocketIsGoal,
+        targetAmount: pocketIsGoal ? pocketTargetAmount : null,
+        targetDate: pocketIsGoal && pocketTargetDate ? new Date(pocketTargetDate) : null,
+        isLocked: pocketIsGoal ? pocketIsLocked : false,
         createdAt: new Date(),
       };
       setPocketsList([...pocketsList, newPocket]);
       setIsCreatingPocket(false);
+      triggerToast(`Pocket "${pocketName.trim()}" created successfully!`, "success");
     } else {
       triggerToast(res.error || "Failed to create pocket.");
     }
@@ -467,24 +524,59 @@ export default function DashboardClient({
     }
     const normalizedBalance = pocketBalance.replace(',', '.');
     const val = parseFloat(normalizedBalance);
-    if (isNaN(val)) {
-      triggerToast("Balance must be a valid number.");
+    if (isNaN(val) || val < 0) {
+      triggerToast("Balance must be a valid non-negative number.");
       return;
+    }
+
+    if (pocketIsGoal) {
+      const normalizedTarget = pocketTargetAmount.replace(',', '.');
+      const targetVal = parseFloat(normalizedTarget);
+      if (isNaN(targetVal) || targetVal <= 0) {
+        triggerToast("Target amount must be a valid number greater than 0.");
+        return;
+      }
+      if (pocketTargetDate) {
+        const todayStr = new Date().toLocaleDateString("en-CA");
+        if (pocketTargetDate < todayStr) {
+          triggerToast("Target date cannot be in the past (must be today or later).");
+          return;
+        }
+      }
     }
 
     setIsSubmitting(true);
     setError(null);
 
-    const res = await updatePocket(editingPocket.id, pocketName, pocketBalance, pocketIcon);
+    const res = await updatePocket(
+      editingPocket.id,
+      pocketName,
+      pocketBalance,
+      pocketIcon,
+      pocketIsGoal,
+      pocketTargetAmount,
+      pocketTargetDate,
+      pocketIsLocked
+    );
     if (res.success) {
       setPocketsList(
         pocketsList.map((p) =>
           p.id === editingPocket.id
-            ? { ...p, name: pocketName.trim(), balance: val.toFixed(2), icon: pocketIcon }
+            ? {
+                ...p,
+                name: pocketName.trim(),
+                balance: val.toFixed(2),
+                icon: pocketIcon,
+                isGoal: pocketIsGoal,
+                targetAmount: pocketIsGoal ? pocketTargetAmount : null,
+                targetDate: pocketIsGoal && pocketTargetDate ? new Date(pocketTargetDate) : null,
+                isLocked: pocketIsGoal ? pocketIsLocked : false,
+              }
             : p
         )
       );
       setEditingPocket(null);
+      triggerToast(`Pocket "${pocketName.trim()}" updated successfully!`, "success");
     } else {
       triggerToast(res.error || "Failed to update pocket.");
     }
@@ -492,7 +584,13 @@ export default function DashboardClient({
   };
 
   const handleDeletePocket = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this pocket? All records inside will be permanently deleted.")) {
+    const pocketToDelete = pocketsList.find((p) => p.id === id);
+    if (pocketToDelete?.isLocked) {
+      triggerToast(`Pocket "${pocketToDelete.name}" is locked. Unlock it first before deleting.`);
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to delete "${pocketToDelete?.name || 'this pocket'}"? All records inside will be permanently deleted.`)) {
       return;
     }
 
@@ -503,8 +601,9 @@ export default function DashboardClient({
       if (editingPocket?.id === id) {
         setEditingPocket(null);
       }
+      triggerToast("Pocket deleted successfully.", "success");
     } else {
-      alert(res.error || "Failed to delete pocket.");
+      triggerToast(res.error || "Failed to delete pocket.");
     }
     setIsSubmitting(false);
   };
@@ -775,6 +874,13 @@ export default function DashboardClient({
   const handleCancel = () => {
     setIsCreatingPocket(false);
     setEditingPocket(null);
+    setPocketName("");
+    setPocketBalance("");
+    setPocketIcon("wallet");
+    setPocketIsGoal(false);
+    setPocketTargetAmount("");
+    setPocketTargetDate("");
+    setPocketIsLocked(false);
     setIsCreatingCategory(false);
     setEditingCategory(null);
     setIsLoggingTransaction(false);
@@ -1040,6 +1146,14 @@ export default function DashboardClient({
               setPocketBalance={setPocketBalance}
               pocketIcon={pocketIcon}
               setPocketIcon={setPocketIcon}
+              isGoal={pocketIsGoal}
+              setIsGoal={setPocketIsGoal}
+              targetAmount={pocketTargetAmount}
+              setTargetAmount={setPocketTargetAmount}
+              targetDate={pocketTargetDate}
+              setTargetDate={setPocketTargetDate}
+              isLocked={pocketIsLocked}
+              setIsLocked={setPocketIsLocked}
               isSubmitting={isSubmitting}
               error={error}
             />
@@ -1096,6 +1210,8 @@ export default function DashboardClient({
               handleOpenEditPocket={handleOpenEditPocket}
               handleDeletePocket={handleDeletePocket}
               handleOpenTransfer={() => setIsTransferModalOpen(true)}
+              handleOpenRecurring={() => setIsRecurringModalOpen(true)}
+              recurringCount={recurringList.filter((r) => r.isActive).length}
               handleOpenCreateCategory={handleOpenCreateCategory}
               handleOpenEditCategory={handleOpenEditCategory}
               handleDeleteCategory={handleDeleteCategory}
@@ -1262,6 +1378,17 @@ export default function DashboardClient({
         onClose={() => setIsTransferModalOpen(false)}
         onTransferSuccess={handleTransferSuccess}
         triggerToast={(msg) => triggerToast(msg, "success")}
+      />
+
+      {/* Recurring Auto-Transactions Modal */}
+      <RecurringModal
+        isOpen={isRecurringModalOpen}
+        onClose={() => setIsRecurringModalOpen(false)}
+        pocketsList={pocketsList}
+        categoriesList={categoriesList}
+        recurringList={recurringList}
+        onRulesUpdated={(updated) => setRecurringList(updated)}
+        triggerToast={triggerToast}
       />
 
       {/* Toast Notification */}

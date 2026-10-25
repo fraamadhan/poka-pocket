@@ -9,6 +9,10 @@ interface Pocket {
   name: string;
   balance: string;
   icon: string;
+  isGoal?: boolean;
+  targetAmount?: string | null;
+  targetDate?: Date | string | null;
+  isLocked?: boolean;
   createdAt?: Date;
 }
 
@@ -50,8 +54,10 @@ export default function TransferModal({
   // Initialize or reset selected pockets when modal opens
   useEffect(() => {
     if (isOpen && pocketsList.length > 0) {
-      setFromPocketId(pocketsList[0].id);
-      setToPocketId(pocketsList.length > 1 ? pocketsList[1].id : "");
+      const defaultFrom = pocketsList.find((p) => !p.isLocked) || pocketsList[0];
+      setFromPocketId(defaultFrom.id);
+      const defaultTo = pocketsList.find((p) => p.id !== defaultFrom.id);
+      setToPocketId(defaultTo ? defaultTo.id : "");
       setAmount("");
       setNote("");
       setError(null);
@@ -82,6 +88,11 @@ export default function TransferModal({
 
     if (fromPocketId === toPocketId) {
       setError("Source and destination pockets cannot be the same.");
+      return;
+    }
+
+    if (selectedFromPocket?.isLocked) {
+      setError(`Pocket "${selectedFromPocket.name}" is locked. Unlock the pocket first to transfer funds.`);
       return;
     }
 
@@ -174,8 +185,8 @@ export default function TransferModal({
               className="p-2 border-2 border-black text-sm bg-zinc-950 text-white outline-none focus:bg-zinc-900 transition-colors"
             >
               {pocketsList.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} — Rp {parseFloat(p.balance).toLocaleString("id-ID")}
+                <option key={p.id} value={p.id} disabled={p.isLocked}>
+                  {p.isLocked ? `🔒 ${p.name} (Locked)` : `${p.name} — Rp ${parseFloat(p.balance).toLocaleString("id-ID")}`}
                 </option>
               ))}
             </select>
@@ -213,7 +224,7 @@ export default function TransferModal({
                   value={p.id} 
                   disabled={p.id === fromPocketId}
                 >
-                  {p.name} {p.id === fromPocketId ? "(Source - Cannot Select)" : `— Rp ${parseFloat(p.balance).toLocaleString("id-ID")}`}
+                  {p.isGoal ? "🎯 " : ""}{p.name} {p.id === fromPocketId ? "(Source - Cannot Select)" : `— Rp ${parseFloat(p.balance).toLocaleString("id-ID")}`}
                 </option>
               ))}
             </select>

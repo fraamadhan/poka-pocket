@@ -129,7 +129,7 @@ export async function generateExcelExport(filters?: {
     sheet.getCell("A3").value = "Exported For:";
     sheet.getCell("B3").value = userName;
     sheet.getCell("A4").value = "Exported At:";
-    sheet.getCell("B4").value = new Date().toLocaleString("id-ID");
+    sheet.getCell("B4").value = new Date().toLocaleString("en-US");
     sheet.getCell("A3").font = { bold: true };
     sheet.getCell("A4").font = { bold: true };
 

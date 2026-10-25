@@ -47,7 +47,15 @@ export async function getPockets() {
   }
 }
 
-export async function createPocket(name: string, balance: string, icon: string = "wallet") {
+export async function createPocket(
+  name: string,
+  balance: string,
+  icon: string = "wallet",
+  isGoal: boolean = false,
+  targetAmount?: string,
+  targetDate?: string | null,
+  isLocked: boolean = false
+) {
   if (!name || name.trim() === "") {
     return { error: "Pocket name cannot be empty." };
   }
@@ -59,6 +67,35 @@ export async function createPocket(name: string, balance: string, icon: string =
     return { error: "Pocket balance cannot be less than 0." };
   }
 
+  let formattedTargetAmount: string | null = null;
+  let parsedTargetDate: Date | null = null;
+
+  if (isGoal) {
+    if (!targetAmount || targetAmount.trim() === "") {
+      return { error: "Target amount is required for saving goal pockets." };
+    }
+    const numericTarget = parseCurrencyInput(targetAmount);
+    if (isNaN(numericTarget) || numericTarget <= 0) {
+      return { error: "Target amount must be a valid number greater than 0." };
+    }
+    formattedTargetAmount = numericTarget.toFixed(2);
+
+    if (targetDate && targetDate.trim() !== "") {
+      const parsed = new Date(targetDate);
+      if (isNaN(parsed.getTime())) {
+        return { error: "Target date format is invalid." };
+      }
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const targetMidnight = new Date(parsed);
+      targetMidnight.setHours(0, 0, 0, 0);
+      if (targetMidnight < today) {
+        return { error: "Target date cannot be in the past (must be today or later)." };
+      }
+      parsedTargetDate = parsed;
+    }
+  }
+
   try {
     const userId = await getUserId();
     const pocketId = crypto.randomUUID();
@@ -68,6 +105,10 @@ export async function createPocket(name: string, balance: string, icon: string =
       name: name.trim(),
       balance: numericBalance.toFixed(2),
       icon,
+      isGoal: !!isGoal,
+      targetAmount: isGoal ? formattedTargetAmount : null,
+      targetDate: isGoal ? parsedTargetDate : null,
+      isLocked: isGoal ? !!isLocked : false,
     });
     revalidatePath("/dashboard");
     return { success: true, id: pocketId };
@@ -77,7 +118,16 @@ export async function createPocket(name: string, balance: string, icon: string =
   }
 }
 
-export async function updatePocket(id: string, name: string, balance: string, icon: string) {
+export async function updatePocket(
+  id: string,
+  name: string,
+  balance: string,
+  icon: string,
+  isGoal: boolean = false,
+  targetAmount?: string,
+  targetDate?: string | null,
+  isLocked: boolean = false
+) {
   if (!id) {
     return { error: "Pocket ID is required." };
   }
@@ -92,14 +142,47 @@ export async function updatePocket(id: string, name: string, balance: string, ic
     return { error: "Pocket balance cannot be less than 0." };
   }
 
+  let formattedTargetAmount: string | null = null;
+  let parsedTargetDate: Date | null = null;
+
+  if (isGoal) {
+    if (!targetAmount || targetAmount.trim() === "") {
+      return { error: "Target amount is required for saving goal pockets." };
+    }
+    const numericTarget = parseCurrencyInput(targetAmount);
+    if (isNaN(numericTarget) || numericTarget <= 0) {
+      return { error: "Target amount must be a valid number greater than 0." };
+    }
+    formattedTargetAmount = numericTarget.toFixed(2);
+
+    if (targetDate && targetDate.trim() !== "") {
+      const parsed = new Date(targetDate);
+      if (isNaN(parsed.getTime())) {
+        return { error: "Target date format is invalid." };
+      }
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const targetMidnight = new Date(parsed);
+      targetMidnight.setHours(0, 0, 0, 0);
+      if (targetMidnight < today) {
+        return { error: "Target date cannot be in the past (must be today or later)." };
+      }
+      parsedTargetDate = parsed;
+    }
+  }
+
   try {
     const userId = await getUserId();
-    const updated = await db
+    await db
       .update(pockets)
       .set({
         name: name.trim(),
         balance: numericBalance.toFixed(2),
         icon,
+        isGoal: !!isGoal,
+        targetAmount: isGoal ? formattedTargetAmount : null,
+        targetDate: isGoal ? parsedTargetDate : null,
+        isLocked: isGoal ? !!isLocked : false,
       })
       .where(and(eq(pockets.id, id), eq(pockets.userId, userId)));
 
@@ -118,6 +201,22 @@ export async function deletePocket(id: string) {
 
   try {
     const userId = await getUserId();
+
+    // Edge case safety: prevent deleting a locked pocket without unlocking first
+    const [existing] = await db
+      .select({ isLocked: pockets.isLocked, name: pockets.name })
+      .from(pockets)
+      .where(and(eq(pockets.id, id), eq(pockets.userId, userId)))
+      .limit(1);
+
+    if (!existing) {
+      return { error: "Pocket not found." };
+    }
+
+    if (existing.isLocked) {
+      return { error: `Pocket "${existing.name}" is locked. Unlock the pocket first before deleting.` };
+    }
+
     await db
       .delete(pockets)
       .where(and(eq(pockets.id, id), eq(pockets.userId, userId)));

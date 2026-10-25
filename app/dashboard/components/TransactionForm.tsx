@@ -6,6 +6,10 @@ interface Pocket {
   name: string;
   balance: string;
   icon: string;
+  isGoal?: boolean;
+  targetAmount?: string | null;
+  targetDate?: Date | string | null;
+  isLocked?: boolean;
   createdAt: Date;
 }
 
@@ -164,10 +168,11 @@ export default function TransactionForm({
             const balanceNum = parseFloat(p.balance);
             const isExpense = transType === "expense";
             const isZero = balanceNum <= 0;
+            const isLockedExpense = isExpense && !!p.isLocked;
             return {
               value: p.id,
-              label: `${p.name} (Bal: Rp ${balanceNum.toLocaleString("id-ID")})${isExpense && isZero ? " - [Empty]" : ""}`,
-              disabled: isExpense && isZero,
+              label: `${p.isGoal ? "🎯 " : ""}${p.name} (Bal: Rp ${balanceNum.toLocaleString("id-ID")})${isLockedExpense ? " - [🔒 Locked]" : isExpense && isZero ? " - [Empty]" : ""}`,
+              disabled: (isExpense && isZero) || isLockedExpense,
             };
           })}
         />

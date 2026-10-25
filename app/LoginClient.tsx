@@ -37,8 +37,9 @@ export default function LoginClient({ error }: LoginClientProps) {
 
     try {
       // Direct integration to Google Provider callback redirecting to /dashboard on success
-      await signIn("google", { callbackUrl: "/dashboard" });
+      await signIn("google", { callbackUrl: "/dashboard", redirectTo: "/dashboard" });
     } catch (err) {
+      console.error("Google sign-in error:", err);
       setIsLoggingIn(false);
       setToastMessage("Failed to connect to Google OAuth servers.");
       setToastKey(prev => prev + 1);

@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer, primaryKey, numeric } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, integer, primaryKey, numeric, boolean } from "drizzle-orm/pg-core";
 import type { AdapterAccount } from "@auth/core/adapters";
 
 // --- NextAuth v5 Required Tables ---
@@ -63,6 +63,10 @@ export const pockets = pgTable("pocket", {
   name: text("name").notNull(),
   balance: numeric("balance", { precision: 12, scale: 2 }).notNull().default("0.00"),
   icon: text("icon").notNull().default("satchel"), // e.g. "satchel", "chest", "wallet"
+  isGoal: boolean("isGoal").notNull().default(false),
+  targetAmount: numeric("targetAmount", { precision: 12, scale: 2 }), // Target dana yang ingin dicapai
+  targetDate: timestamp("targetDate", { mode: "date" }),              // Tenggat waktu opsional
+  isLocked: boolean("isLocked").notNull().default(false),              // Mode kunci kantong
   createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
 });
 
@@ -111,3 +115,24 @@ export const exports = pgTable("export_history", {
   fileUrl: text("fileUrl").notNull(),
   createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
 });
+
+export const recurringRules = pgTable("recurring_rule", {
+  id: text("id").notNull().primaryKey(),
+  userId: text("userId")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  pocketId: text("pocketId")
+    .notNull()
+    .references(() => pockets.id, { onDelete: "cascade" }),
+  categoryId: text("categoryId")
+    .references(() => categories.id, { onDelete: "set null" }),
+  type: text("type").$type<"expense" | "income">().notNull(),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  description: text("description").notNull(),
+  frequency: text("frequency").$type<"daily" | "weekly" | "monthly">().notNull(),
+  nextRunDate: timestamp("nextRunDate", { mode: "date" }).notNull(),
+  lastRunDate: timestamp("lastRunDate", { mode: "date" }),
+  isActive: boolean("isActive").notNull().default(true),
+  createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+});
+

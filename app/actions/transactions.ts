@@ -74,6 +74,11 @@ export async function createTransaction(
         throw new Error("Chosen pocket not found or unauthorized.");
       }
 
+      // Edge case: prevent expense from locked pocket
+      if (type === "expense" && pocket.isLocked) {
+        throw new Error(`Pocket "${pocket.name}" is locked for saving. Unlock it before logging an expense.`);
+      }
+
       // 2. Calculate new balance
       const currentBalance = parseFloat(pocket.balance);
       let newBalance = currentBalance;
@@ -154,6 +159,11 @@ export async function transferPocketBalance(
       // check if pocket is found and owner is correct
       if (!fromPocket || !toPocket) {
         throw new Error("Pocket not found");
+      }
+
+      // Edge case: prevent transfer out from locked pocket
+      if (fromPocket.isLocked) {
+        throw new Error(`Pocket "${fromPocket.name}" is locked. Unlock it first before transferring funds.`);
       }
 
       // check balance
