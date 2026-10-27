@@ -34,8 +34,7 @@ export async function getRecentTransactions() {
       .leftJoin(pockets, eq(transactions.pocketId, pockets.id))
       .leftJoin(categories, eq(transactions.categoryId, categories.id))
       .where(eq(transactions.userId, userId))
-      .orderBy(desc(transactions.createdAt))
-      .limit(10);
+      .orderBy(desc(transactions.createdAt));
     return { data: result };
   } catch (error: any) {
     console.error("Failed to fetch transactions:", error);
