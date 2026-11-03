@@ -3,7 +3,7 @@
 import { db } from "@/db";
 import { transactions, pockets, categories } from "@/db/schema";
 import { auth } from "@/auth";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, asc, sql, isNotNull, gte, lte } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { parseCurrencyInput } from "@/lib/currency";
 
@@ -16,9 +16,68 @@ async function getUserId() {
   return session.user.id;
 }
 
-export async function getRecentTransactions() {
+export interface RecentTransactionsFilters {
+  filter?: "all" | "day" | "week" | "month" | "3months" | "6months" | "year" | "custom";
+  startDate?: string;
+  endDate?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export async function getRecentTransactions(filters: RecentTransactionsFilters = {}) {
   try {
     const userId = await getUserId();
+    const {
+      filter = "all",
+      startDate,
+      endDate,
+      page = 1,
+      pageSize = 5,
+    } = filters;
+
+    const conditions = [eq(transactions.userId, userId)];
+
+    if (filter === "custom") {
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        conditions.push(gte(transactions.createdAt, start));
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        conditions.push(lte(transactions.createdAt, end));
+      }
+    } else if (filter && filter !== "all") {
+      const dateLimit = new Date();
+      if (filter === "day") {
+        dateLimit.setDate(dateLimit.getDate() - 1);
+      } else if (filter === "week") {
+        dateLimit.setDate(dateLimit.getDate() - 7);
+      } else if (filter === "month") {
+        dateLimit.setMonth(dateLimit.getMonth() - 1);
+      } else if (filter === "3months") {
+        dateLimit.setMonth(dateLimit.getMonth() - 3);
+      } else if (filter === "6months") {
+        dateLimit.setMonth(dateLimit.getMonth() - 6);
+      } else if (filter === "year") {
+        dateLimit.setFullYear(dateLimit.getFullYear() - 1);
+      }
+      conditions.push(gte(transactions.createdAt, dateLimit));
+    }
+
+    const whereClause = and(...conditions);
+
+    // Get total count for pagination
+    const countResult = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(transactions)
+      .where(whereClause);
+
+    const totalCount = countResult[0]?.count || 0;
+    const safePage = Math.max(1, page);
+    const offset = (safePage - 1) * pageSize;
+
     const result = await db
       .select({
         id: transactions.id,
@@ -33,12 +92,233 @@ export async function getRecentTransactions() {
       .from(transactions)
       .leftJoin(pockets, eq(transactions.pocketId, pockets.id))
       .leftJoin(categories, eq(transactions.categoryId, categories.id))
-      .where(eq(transactions.userId, userId))
-      .orderBy(desc(transactions.createdAt));
-    return { data: result };
+      .where(whereClause)
+      .orderBy(desc(transactions.createdAt))
+      .limit(pageSize)
+      .offset(offset);
+
+    return {
+      data: result,
+      totalCount,
+      totalPages: Math.ceil(totalCount / pageSize) || 1,
+      currentPage: safePage,
+    };
   } catch (error: any) {
     console.error("Failed to fetch transactions:", error);
-    return { error: error.message || "Failed to load transactions." };
+    return {
+      data: [],
+      totalCount: 0,
+      totalPages: 1,
+      currentPage: 1,
+      error: error.message || "Failed to load transactions.",
+    };
+  }
+}
+
+export async function getCurrentMonthCategorySpent() {
+  try {
+    const userId = await getUserId();
+    const currentMonthStart = new Date();
+    currentMonthStart.setDate(1);
+    currentMonthStart.setHours(0, 0, 0, 0);
+
+    const rows = await db
+      .select({
+        categoryName: categories.name,
+        totalSpent: sql<number>`COALESCE(SUM(${transactions.amount}::numeric), 0)::float`,
+      })
+      .from(transactions)
+      .innerJoin(categories, eq(transactions.categoryId, categories.id))
+      .where(
+        and(
+          eq(transactions.userId, userId),
+          eq(transactions.type, "expense"),
+          isNotNull(transactions.categoryId), // Transfers are excluded because category is null
+          gte(transactions.createdAt, currentMonthStart)
+        )
+      )
+      .groupBy(categories.name);
+
+    const map: Record<string, number> = {};
+    for (const r of rows) {
+      if (r.categoryName) {
+        map[r.categoryName] = Number(r.totalSpent) || 0;
+      }
+    }
+    return { data: map };
+  } catch (error: any) {
+    console.error("Failed to fetch current month category spent:", error);
+    return { data: {}, error: error.message || "Failed to load category spent." };
+  }
+}
+
+export interface AnalyticsFilters {
+  filterTime?: "day" | "week" | "month" | "year" | "all";
+  filterPocket?: string;
+  filterCategory?: string;
+  filterType?: "all" | "expense" | "income";
+}
+
+export interface AnalyticsData {
+  totalIncome: number;
+  totalExpense: number;
+  categorySpentMap: Record<string, number>;
+  manaPoints: { date: string; balance: number }[];
+}
+
+export async function getAnalyticsData(filters: AnalyticsFilters = {}) {
+  try {
+    const userId = await getUserId();
+    const {
+      filterTime = "month",
+      filterPocket = "all",
+      filterCategory = "all",
+      filterType = "all",
+    } = filters;
+
+    const conditions = [eq(transactions.userId, userId)];
+
+    // 1. Time Filter
+    if (filterTime && filterTime !== "all") {
+      const dateLimit = new Date();
+      if (filterTime === "day") {
+        dateLimit.setDate(dateLimit.getDate() - 1);
+      } else if (filterTime === "week") {
+        dateLimit.setDate(dateLimit.getDate() - 7);
+      } else if (filterTime === "month") {
+        dateLimit.setMonth(dateLimit.getMonth() - 1);
+      } else if (filterTime === "year") {
+        dateLimit.setFullYear(dateLimit.getFullYear() - 1);
+      }
+      conditions.push(gte(transactions.createdAt, dateLimit));
+    }
+
+    // 2. Pocket Filter
+    if (filterPocket && filterPocket !== "all") {
+      conditions.push(eq(pockets.name, filterPocket));
+    }
+
+    // 3. Category Filter
+    if (filterCategory && filterCategory !== "all") {
+      conditions.push(eq(categories.name, filterCategory));
+    }
+
+    // Total Income - EXCLUDE transfers (where categoryId is null)
+    let totalIncome = 0;
+    if (filterType === "all" || filterType === "income") {
+      const incConditions = [
+        ...conditions,
+        eq(transactions.type, "income"),
+        isNotNull(transactions.categoryId), // EXCLUDES pocket-to-pocket transfers!
+      ];
+      const [incRow] = await db
+        .select({
+          total: sql<number>`COALESCE(SUM(${transactions.amount}::numeric), 0)::float`,
+        })
+        .from(transactions)
+        .leftJoin(pockets, eq(transactions.pocketId, pockets.id))
+        .leftJoin(categories, eq(transactions.categoryId, categories.id))
+        .where(and(...incConditions));
+
+      totalIncome = Number(incRow?.total) || 0;
+    }
+
+    // Total Expense - EXCLUDE transfers (where categoryId is null)
+    let totalExpense = 0;
+    if (filterType === "all" || filterType === "expense") {
+      const expConditions = [
+        ...conditions,
+        eq(transactions.type, "expense"),
+        isNotNull(transactions.categoryId), // EXCLUDES pocket-to-pocket transfers!
+      ];
+      const [expRow] = await db
+        .select({
+          total: sql<number>`COALESCE(SUM(${transactions.amount}::numeric), 0)::float`,
+        })
+        .from(transactions)
+        .leftJoin(pockets, eq(transactions.pocketId, pockets.id))
+        .leftJoin(categories, eq(transactions.categoryId, categories.id))
+        .where(and(...expConditions));
+
+      totalExpense = Number(expRow?.total) || 0;
+    }
+
+    // Category Spending Breakdown (only for expenses with valid category)
+    const catSpentRows = await db
+      .select({
+        categoryName: categories.name,
+        spent: sql<number>`COALESCE(SUM(${transactions.amount}::numeric), 0)::float`,
+      })
+      .from(transactions)
+      .leftJoin(pockets, eq(transactions.pocketId, pockets.id))
+      .innerJoin(categories, eq(transactions.categoryId, categories.id))
+      .where(
+        and(
+          ...conditions,
+          eq(transactions.type, "expense"),
+          isNotNull(transactions.categoryId)
+        )
+      )
+      .groupBy(categories.name);
+
+    const categorySpentMap: Record<string, number> = {};
+    for (const r of catSpentRows) {
+      if (r.categoryName) {
+        categorySpentMap[r.categoryName] = Number(r.spent) || 0;
+      }
+    }
+
+    // Mana Points (Balance Trend)
+    const trendConditions = [...conditions];
+    if (filterType && filterType !== "all") {
+      trendConditions.push(eq(transactions.type, filterType));
+    }
+
+    const trendRows = await db
+      .select({
+        amount: transactions.amount,
+        type: transactions.type,
+        createdAt: transactions.createdAt,
+      })
+      .from(transactions)
+      .leftJoin(pockets, eq(transactions.pocketId, pockets.id))
+      .leftJoin(categories, eq(transactions.categoryId, categories.id))
+      .where(and(...trendConditions))
+      .orderBy(asc(transactions.createdAt));
+
+    let rollingBalance = 0;
+    const manaPoints = trendRows.map((t) => {
+      const amt = parseFloat(t.amount);
+      if (t.type === "income") {
+        rollingBalance += amt;
+      } else {
+        rollingBalance -= amt;
+      }
+      return {
+        date: t.createdAt.toISOString(),
+        balance: rollingBalance,
+      };
+    });
+
+    return {
+      data: {
+        totalIncome,
+        totalExpense,
+        categorySpentMap,
+        manaPoints,
+      },
+    };
+  } catch (error: any) {
+    console.error("Failed to fetch analytics data:", error);
+    return {
+      data: {
+        totalIncome: 0,
+        totalExpense: 0,
+        categorySpentMap: {},
+        manaPoints: [],
+      },
+      error: error.message || "Failed to load analytics data.",
+    };
   }
 }
 

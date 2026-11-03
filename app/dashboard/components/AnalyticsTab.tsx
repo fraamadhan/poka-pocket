@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import BrutalistSelect from "@/components/BrutalistSelect";
 import { getCategoryEmoji } from "./LogsTab";
+import { AnalyticsData, getAnalyticsData } from "@/app/actions/transactions";
 
 interface Pocket {
   id: string;
@@ -22,108 +23,83 @@ interface Category {
   createdAt: Date;
 }
 
-interface Transaction {
-  id: string;
-  amount: string;
-  type: "expense" | "income";
-  description: string | null;
-  createdAt: Date;
-  pocketName: string | null;
-  categoryName: string | null;
-  categoryIcon: string | null;
-}
-
 interface AnalyticsTabProps {
   pocketsList: Pocket[];
   categoriesList: Category[];
-  transactionsList: Transaction[];
   totalBalance: number;
+  initialAnalyticsData?: AnalyticsData;
+  transactionsList?: any;
 }
 
 export default function AnalyticsTab({
   pocketsList,
   categoriesList,
-  transactionsList,
   totalBalance,
+  initialAnalyticsData,
 }: AnalyticsTabProps) {
-  // Filters State for Analytics
+  // Filters State for Analytics (Processed in Backend)
   const [filterTime, setFilterTime] = useState<"day" | "week" | "month" | "year" | "all">("month");
   const [filterPocket, setFilterPocket] = useState<string>("all");
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [filterType, setFilterType] = useState<"all" | "expense" | "income">("all");
 
-  // --- Filtering & Calculations for Analytics Tab ---
-  const filteredTransactions = transactionsList.filter((t) => {
-    // 1. Filter Time
-    const dateLimit = new Date();
-    if (filterTime === "day") {
-      dateLimit.setDate(dateLimit.getDate() - 1);
-    } else if (filterTime === "week") {
-      dateLimit.setDate(dateLimit.getDate() - 7);
-    } else if (filterTime === "month") {
-      dateLimit.setMonth(dateLimit.getMonth() - 1);
-    } else if (filterTime === "year") {
-      dateLimit.setFullYear(dateLimit.getFullYear() - 1);
+  const [analyticsData, setAnalyticsData] = useState<AnalyticsData>(
+    initialAnalyticsData || {
+      totalIncome: 0,
+      totalExpense: 0,
+      categorySpentMap: {},
+      manaPoints: [],
     }
-    const isWithinTime = filterTime === "all" || new Date(t.createdAt) >= dateLimit;
+  );
+  const [isUpdating, setIsUpdating] = useState(false);
 
-    // 2. Filter Pocket
-    const isMatchingPocket = filterPocket === "all" || t.pocketName === filterPocket;
+  // Sync with initialAnalyticsData when it updates from parent
+  useEffect(() => {
+    if (initialAnalyticsData) {
+      setAnalyticsData(initialAnalyticsData);
+    }
+  }, [initialAnalyticsData]);
 
-    // 3. Filter Category
-    const isMatchingCategory = filterCategory === "all" || t.categoryName === filterCategory;
+  // Fetch updated aggregated analytics from backend whenever filters change
+  const isFirstMount = useRef(true);
+  useEffect(() => {
+    if (isFirstMount.current) {
+      isFirstMount.current = false;
+      return;
+    }
 
-    // 4. Filter Type
-    const isMatchingType = filterType === "all" || t.type === filterType;
+    let isCancelled = false;
+    const fetchAnalytics = async () => {
+      setIsUpdating(true);
+      const res = await getAnalyticsData({
+        filterTime,
+        filterPocket,
+        filterCategory,
+        filterType,
+      });
 
-    return isWithinTime && isMatchingPocket && isMatchingCategory && isMatchingType;
-  });
-
-  // Sum total income & expense inside filtered list
-  const totalFilteredIncome = filteredTransactions
-    .filter((t) => t.type === "income")
-    .reduce((sum, t) => sum + parseFloat(t.amount), 0);
-
-  const totalFilteredExpense = filteredTransactions
-    .filter((t) => t.type === "expense")
-    .reduce((sum, t) => sum + parseFloat(t.amount), 0);
-
-  // Sum spending per category inside filtered list
-  const filteredCategorySpentMap = filteredTransactions
-    .filter((t) => t.type === "expense")
-    .reduce((map, t) => {
-      if (t.categoryName) {
-        map[t.categoryName] = (map[t.categoryName] || 0) + parseFloat(t.amount);
+      if (!isCancelled && res.data) {
+        setAnalyticsData(res.data);
       }
-      return map;
-    }, {} as Record<string, number>);
+      setIsUpdating(false);
+    };
 
-  // Compute Balance history trend line
-  const computeManaCurveData = () => {
-    if (filteredTransactions.length === 0) return [];
-    
-    // Sort chronologically ascending
-    const chronological = [...filteredTransactions].sort(
-      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-    );
+    fetchAnalytics();
 
-    let rollingBalance = 0;
-    const balancePoints = chronological.map((t) => {
-      if (t.type === "income") {
-        rollingBalance += parseFloat(t.amount);
-      } else {
-        rollingBalance -= parseFloat(t.amount);
-      }
-      return {
-        date: new Date(t.createdAt),
-        balance: rollingBalance,
-      };
-    });
+    return () => {
+      isCancelled = true;
+    };
+  }, [filterTime, filterPocket, filterCategory, filterType]);
 
-    return balancePoints;
-  };
+  const totalFilteredIncome = analyticsData.totalIncome;
+  const totalFilteredExpense = analyticsData.totalExpense;
+  const filteredCategorySpentMap = analyticsData.categorySpentMap;
 
-  const manaPoints = computeManaCurveData();
+  // Convert ISO string dates to Date objects for the SVG chart
+  const manaPoints = analyticsData.manaPoints.map((p) => ({
+    date: new Date(p.date),
+    balance: p.balance,
+  }));
 
   // Generate SVG path for Mana Curve Line Chart
   const renderManaCurveSvg = () => {
@@ -234,7 +210,7 @@ export default function AnalyticsTab({
   };
 
   return (
-    <div className="flex flex-col gap-5 text-left">
+    <div className={`flex flex-col gap-5 text-left transition-opacity duration-200 ${isUpdating ? "opacity-60" : "opacity-100"}`}>
       
       {/* Analytics Filters Control Panel */}
       <div className="border-4 border-black p-3 bg-zinc-950 flex flex-col gap-2.5 shadow-[3px_3px_0px_#000] text-white">

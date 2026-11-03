@@ -35,7 +35,7 @@ interface Transaction {
 interface LogsTabProps {
   pocketsList: Pocket[];
   categoriesList: Category[];
-  transactionsList: Transaction[];
+  transactionsList?: Transaction[];
   categorySpentMap: Record<string, number>;
   tourActive: boolean;
   tourStep: number;
@@ -57,6 +57,8 @@ interface LogsTabProps {
   setRecentEndDate: (val: string) => void;
   recentPage: number;
   setRecentPage: React.Dispatch<React.SetStateAction<number>>;
+  recentTotalPages?: number;
+  isRecentLoading?: boolean;
   filteredRecentTransactions: Transaction[];
   formatTransactionDateTime: (dateInput: Date | string) => string;
 }
@@ -107,6 +109,8 @@ export default function LogsTab({
   setRecentEndDate,
   recentPage,
   setRecentPage,
+  recentTotalPages = 1,
+  isRecentLoading = false,
   filteredRecentTransactions,
   formatTransactionDateTime,
 }: LogsTabProps) {
@@ -395,61 +399,59 @@ export default function LogsTab({
 
         {filteredRecentTransactions.length === 0 ? (
           <p className="text-zinc-400 text-xs py-4 bg-zinc-950 border-2 border-black border-dashed text-center">
-            No transactions found for the selected filter.
+            {isRecentLoading ? "Loading transactions..." : "No transactions found for the selected filter."}
           </p>
         ) : (
           <>
-            <div className="flex flex-col gap-2 max-h-[265px] overflow-y-auto pr-1 pb-1">
-              {filteredRecentTransactions
-                .slice((recentPage - 1) * 5, recentPage * 5)
-                .map((t) => (
-                  <div 
-                    key={t.id}
-                    className="flex items-center justify-between border-2 border-black p-2 bg-zinc-950 text-sm shadow-[1px_1px_0px_#000] text-white"
-                  >
-                    <div className="flex items-center gap-2 text-left min-w-0 flex-1">
-                      <span className="text-md flex-shrink-0">
-                        {t.type === "expense" ? "🔴" : "🟢"}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p 
-                          className="font-bold text-white leading-none text-sm truncate" 
-                          title={t.description || t.categoryName || "Transaction"}
-                        >
-                          {t.description || t.categoryName || "Transaction"}
-                        </p>
-                        <p 
-                          className="text-[10px] text-zinc-400 mt-1 truncate"
-                          title={`${t.pocketName}${t.categoryName ? ` • ${t.categoryName}` : ""} • ${formatTransactionDateTime(t.createdAt)}`}
-                        >
-                          {t.pocketName} {t.categoryName ? `• ${t.categoryName}` : ""} • <span className="font-mono text-zinc-500">{formatTransactionDateTime(t.createdAt)}</span>
-                        </p>
-                      </div>
-                    </div>
-                    <span className={`font-mono font-bold text-sm ${t.type === "expense" ? "text-red-400" : "text-green-400"} flex-shrink-0 ml-2`}>
-                      {t.type === "expense" ? "-" : "+"} Rp {parseFloat(t.amount).toLocaleString("id-ID")}
+            <div className={`flex flex-col gap-2 max-h-[265px] overflow-y-auto pr-1 pb-1 transition-opacity ${isRecentLoading ? "opacity-50" : "opacity-100"}`}>
+              {filteredRecentTransactions.map((t) => (
+                <div 
+                  key={t.id}
+                  className="flex items-center justify-between border-2 border-black p-2 bg-zinc-950 text-sm shadow-[1px_1px_0px_#000] text-white"
+                >
+                  <div className="flex items-center gap-2 text-left min-w-0 flex-1">
+                    <span className="text-md flex-shrink-0">
+                      {t.type === "expense" ? "🔴" : "🟢"}
                     </span>
+                    <div className="min-w-0 flex-1">
+                      <p 
+                        className="font-bold text-white leading-none text-sm truncate" 
+                        title={t.description || t.categoryName || "Transaction"}
+                      >
+                        {t.description || t.categoryName || "Transaction"}
+                      </p>
+                      <p 
+                        className="text-[10px] text-zinc-400 mt-1 truncate"
+                        title={`${t.pocketName}${t.categoryName ? ` • ${t.categoryName}` : ""} • ${formatTransactionDateTime(t.createdAt)}`}
+                      >
+                        {t.pocketName} {t.categoryName ? `• ${t.categoryName}` : ""} • <span className="font-mono text-zinc-500">{formatTransactionDateTime(t.createdAt)}</span>
+                      </p>
+                    </div>
                   </div>
-                ))}
+                  <span className={`font-mono font-bold text-sm ${t.type === "expense" ? "text-red-400" : "text-green-400"} flex-shrink-0 ml-2`}>
+                    {t.type === "expense" ? "-" : "+"} Rp {parseFloat(t.amount).toLocaleString("id-ID")}
+                  </span>
+                </div>
+              ))}
             </div>
             {/* Pagination Controls */}
-            {filteredRecentTransactions.length > 5 && (
+            {recentTotalPages > 1 && (
               <div className="flex items-center justify-between border-t border-zinc-800 pt-2.5 mt-1 text-xs">
                 <button
                   type="button"
                   onClick={() => setRecentPage((p) => Math.max(1, p - 1))}
-                  disabled={recentPage === 1}
+                  disabled={recentPage <= 1 || isRecentLoading}
                   className="px-2.5 py-1 bg-zinc-950 text-zinc-300 border-2 border-black font-cinzel font-bold shadow-[2px_2px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all disabled:opacity-40 disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:shadow-[2px_2px_0px_#000] disabled:cursor-not-allowed cursor-pointer"
                 >
                   ◀ PREV
                 </button>
                 <span className="font-mono text-zinc-400 font-bold text-[10px]">
-                  PAGE {recentPage} OF {Math.ceil(filteredRecentTransactions.length / 5)}
+                  PAGE {recentPage} OF {recentTotalPages}
                 </span>
                 <button
                   type="button"
-                  onClick={() => setRecentPage((p) => Math.min(Math.ceil(filteredRecentTransactions.length / 5), p + 1))}
-                  disabled={recentPage === Math.ceil(filteredRecentTransactions.length / 5)}
+                  onClick={() => setRecentPage((p) => Math.min(recentTotalPages, p + 1))}
+                  disabled={recentPage >= recentTotalPages || isRecentLoading}
                   className="px-2.5 py-1 bg-zinc-950 text-zinc-300 border-2 border-black font-cinzel font-bold shadow-[2px_2px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all disabled:opacity-40 disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:shadow-[2px_2px_0px_#000] disabled:cursor-not-allowed cursor-pointer"
                 >
                   NEXT ▶

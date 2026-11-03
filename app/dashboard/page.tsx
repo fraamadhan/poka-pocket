@@ -4,7 +4,11 @@ import { redirect } from "next/navigation";
 import DashboardClient from "./DashboardClient";
 import { getPockets } from "@/app/actions/pockets";
 import { getCategories } from "@/app/actions/categories";
-import { getRecentTransactions } from "@/app/actions/transactions";
+import {
+  getRecentTransactions,
+  getCurrentMonthCategorySpent,
+  getAnalyticsData,
+} from "@/app/actions/transactions";
 import { getExportHistory } from "@/app/actions/exports";
 import { getRecurringRules, processPendingRecurringRules } from "@/app/actions/recurring";
 
@@ -25,27 +29,47 @@ export default async function DashboardPage() {
     await processPendingRecurringRules(session.user.id, { shouldRevalidate: false });
   }
 
-  const pocketsResponse = await getPockets();
+  const [
+    pocketsResponse,
+    categoriesResponse,
+    recentTransactionsResponse,
+    exportsResponse,
+    recurringResponse,
+    categorySpentResponse,
+    analyticsResponse,
+  ] = await Promise.all([
+    getPockets(),
+    getCategories(),
+    getRecentTransactions({ filter: "all", page: 1, pageSize: 5 }),
+    getExportHistory(),
+    getRecurringRules(),
+    getCurrentMonthCategorySpent(),
+    getAnalyticsData({ filterTime: "month", filterPocket: "all", filterCategory: "all", filterType: "all" }),
+  ]);
+
   const pocketsList = pocketsResponse.data || [];
-
-  const categoriesResponse = await getCategories();
   const categoriesList = categoriesResponse.data || [];
-
-  const transactionsResponse = await getRecentTransactions();
-  const transactionsList = transactionsResponse.data || [];
-
-  const exportsResponse = await getExportHistory();
+  const recentTransactionsData = recentTransactionsResponse.data || [];
+  const recentTotalPages = recentTransactionsResponse.totalPages || 1;
   const exportsList = exportsResponse.data || [];
-
-  const recurringResponse = await getRecurringRules();
   const recurringList = recurringResponse.data || [];
+  const categorySpentMap = categorySpentResponse.data || {};
+  const initialAnalyticsData = analyticsResponse.data || {
+    totalIncome: 0,
+    totalExpense: 0,
+    categorySpentMap: {},
+    manaPoints: [],
+  };
 
   return (
     <DashboardClient 
       user={session.user} 
       initialPockets={pocketsList} 
       initialCategories={categoriesList} 
-      initialTransactions={transactionsList}
+      initialRecentTransactions={recentTransactionsData}
+      initialRecentTotalPages={recentTotalPages}
+      initialCategorySpentMap={categorySpentMap}
+      initialAnalyticsData={initialAnalyticsData}
       initialExports={exportsList}
       initialRecurringRules={recurringList}
     />

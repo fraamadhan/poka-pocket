@@ -1,11 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { signOut } from "next-auth/react";
 import BrutalistFooter from "@/components/BrutalistFooter";
 import { createPocket, updatePocket, deletePocket } from "@/app/actions/pockets";
 import { createCategory, updateCategory, deleteCategory } from "@/app/actions/categories";
-import { createTransaction } from "@/app/actions/transactions";
+import {
+  createTransaction,
+  getRecentTransactions,
+  getCurrentMonthCategorySpent,
+  AnalyticsData,
+} from "@/app/actions/transactions";
 import { generateExcelExport, deleteExportRecord } from "@/app/actions/exports";
 import { submitFeedback } from "@/app/actions/feedback";
 
@@ -77,7 +82,11 @@ interface DashboardClientProps {
   };
   initialPockets: Pocket[];
   initialCategories: Category[];
-  initialTransactions: Transaction[];
+  initialTransactions?: Transaction[];
+  initialRecentTransactions?: Transaction[];
+  initialRecentTotalPages?: number;
+  initialCategorySpentMap?: Record<string, number>;
+  initialAnalyticsData?: AnalyticsData;
   initialExports: ExportRecord[];
   initialRecurringRules?: RecurringRuleItem[];
 }
@@ -86,7 +95,11 @@ export default function DashboardClient({
   user, 
   initialPockets, 
   initialCategories, 
-  initialTransactions,
+  initialTransactions = [],
+  initialRecentTransactions = [],
+  initialRecentTotalPages = 1,
+  initialCategorySpentMap = {},
+  initialAnalyticsData,
   initialExports,
   initialRecurringRules = [],
 }: DashboardClientProps) {
@@ -208,11 +221,74 @@ export default function DashboardClient({
     }
   }, [tourStep, tourActive]);
 
-  // Recent Activity list state
+  // Recent Activity list state (Processed in Backend)
   const [recentPage, setRecentPage] = useState(1);
   const [recentFilter, setRecentFilter] = useState<"day" | "week" | "month" | "3months" | "6months" | "year" | "custom" | "all">("all");
   const [recentStartDate, setRecentStartDate] = useState("");
   const [recentEndDate, setRecentEndDate] = useState("");
+  const [recentTotalPages, setRecentTotalPages] = useState(initialRecentTotalPages || 1);
+  const [recentTransactions, setRecentTransactions] = useState<Transaction[]>(
+    initialRecentTransactions || initialTransactions || []
+  );
+  const [isRecentLoading, setIsRecentLoading] = useState(false);
+  const [categorySpentMap, setCategorySpentMap] = useState<Record<string, number>>(
+    initialCategorySpentMap || {}
+  );
+
+  // Fetch recent transactions from backend whenever filters or page change
+  const isFirstMountRecent = useRef(true);
+  useEffect(() => {
+    if (isFirstMountRecent.current) {
+      isFirstMountRecent.current = false;
+      return;
+    }
+
+    let isCancelled = false;
+    const fetchRecent = async () => {
+      setIsRecentLoading(true);
+      const res = await getRecentTransactions({
+        filter: recentFilter,
+        startDate: recentStartDate,
+        endDate: recentEndDate,
+        page: recentPage,
+        pageSize: 5,
+      });
+
+      if (!isCancelled && res.data) {
+        setRecentTransactions(res.data);
+        setRecentTotalPages(res.totalPages || 1);
+      }
+      setIsRecentLoading(false);
+    };
+
+    fetchRecent();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [recentFilter, recentStartDate, recentEndDate, recentPage]);
+
+  // Helper to refresh paginated transactions and current month category spending
+  const refreshRecentAndBudgets = async () => {
+    const [recentRes, catSpentRes] = await Promise.all([
+      getRecentTransactions({
+        filter: recentFilter,
+        startDate: recentStartDate,
+        endDate: recentEndDate,
+        page: recentPage,
+        pageSize: 5,
+      }),
+      getCurrentMonthCategorySpent(),
+    ]);
+
+    if (recentRes.data) {
+      setRecentTransactions(recentRes.data);
+      setRecentTotalPages(recentRes.totalPages || 1);
+    }
+    if (catSpentRes.data) {
+      setCategorySpentMap(catSpentRes.data);
+    }
+  };
 
   const formatTransactionDateTime = (dateInput: Date | string) => {
     const d = new Date(dateInput);
@@ -401,20 +477,6 @@ export default function DashboardClient({
 
   // Calculate total balance
   const totalBalance = pocketsList.reduce((sum, p) => sum + parseFloat(p.balance), 0);
-
-  // Calculate spent per category globally (for the current calendar month)
-  const currentMonthStart = new Date();
-  currentMonthStart.setDate(1);
-  currentMonthStart.setHours(0, 0, 0, 0);
-
-  const categorySpentMap = transactionsList
-    .filter((t) => t.type === "expense" && new Date(t.createdAt) >= currentMonthStart)
-    .reduce((map, t) => {
-      if (t.categoryName) {
-        map[t.categoryName] = (map[t.categoryName] || 0) + parseFloat(t.amount);
-      }
-      return map;
-    }, {} as Record<string, number>);
 
   // --- Pocket Actions ---
   const handleOpenCreatePocket = () => {
@@ -852,19 +914,7 @@ export default function DashboardClient({
         )
       );
 
-      const selectedPocket = pocketsList.find((p) => p.id === transPocketId);
-      const selectedCategory = categoriesList.find((c) => c.id === transCategoryId);
-      const newTrans: Transaction = {
-        id: res.transId!,
-        amount: numericAmount.toFixed(2),
-        type: transType,
-        description: transDescription.trim() || null,
-        createdAt: new Date(),
-        pocketName: selectedPocket?.name || "Unknown Pocket",
-        categoryName: selectedCategory?.name || null,
-        categoryIcon: selectedCategory?.icon || null,
-      };
-      setTransactionsList([newTrans, ...transactionsList]);
+      refreshRecentAndBudgets();
       setRecentPage(1);
       setIsLoggingTransaction(false);
     }
@@ -902,30 +952,8 @@ export default function DashboardClient({
       })
     );
 
-    // 2. Add both transfer transaction records to the activity feed
-    const cleanNote = data.note ? ` (${data.note})` : "";
-    const expenseTrans: Transaction = {
-      id: data.outTransId,
-      amount: data.amount,
-      type: "expense",
-      description: `Transfer to ${data.toPocketName}${cleanNote}`,
-      createdAt: new Date(),
-      pocketName: data.fromPocketName,
-      categoryName: null,
-      categoryIcon: null,
-    };
-    const incomeTrans: Transaction = {
-      id: data.inTransId,
-      amount: data.amount,
-      type: "income",
-      description: `Transfer from ${data.fromPocketName}${cleanNote}`,
-      createdAt: new Date(),
-      pocketName: data.toPocketName,
-      categoryName: null,
-      categoryIcon: null,
-    };
-
-    setTransactionsList((prev) => [expenseTrans, incomeTrans, ...prev]);
+    // 2. Refresh recent transactions from backend
+    refreshRecentAndBudgets();
     setRecentPage(1);
   };
 
@@ -954,51 +982,6 @@ export default function DashboardClient({
       setIsSubmittingFeedback(false);
     }
   };
-
-  // --- Filtering for Recent Activity list ---
-  const filteredRecentTransactions = transactionsList.filter((t) => {
-    const dateLimit = new Date();
-    const transDate = new Date(t.createdAt);
-
-    if (recentFilter === "day") {
-      dateLimit.setDate(dateLimit.getDate() - 1);
-      return transDate >= dateLimit;
-    }
-    if (recentFilter === "week") {
-      dateLimit.setDate(dateLimit.getDate() - 7);
-      return transDate >= dateLimit;
-    }
-    if (recentFilter === "month") {
-      dateLimit.setMonth(dateLimit.getMonth() - 1);
-      return transDate >= dateLimit;
-    }
-    if (recentFilter === "3months") {
-      dateLimit.setMonth(dateLimit.getMonth() - 3);
-      return transDate >= dateLimit;
-    }
-    if (recentFilter === "6months") {
-      dateLimit.setMonth(dateLimit.getMonth() - 6);
-      return transDate >= dateLimit;
-    }
-    if (recentFilter === "year") {
-      dateLimit.setFullYear(dateLimit.getFullYear() - 1);
-      return transDate >= dateLimit;
-    }
-    if (recentFilter === "custom") {
-      if (recentStartDate) {
-        const start = new Date(recentStartDate);
-        start.setHours(0, 0, 0, 0);
-        if (transDate < start) return false;
-      }
-      if (recentEndDate) {
-        const end = new Date(recentEndDate);
-        end.setHours(23, 59, 59, 999);
-        if (transDate > end) return false;
-      }
-      return true;
-    }
-    return true;
-  });
 
   return (
     <div className="flex flex-col min-h-screen bg-transparent font-sans p-6 pb-28 justify-center items-center gap-6">
@@ -1202,7 +1185,6 @@ export default function DashboardClient({
             <LogsTab
               pocketsList={pocketsList}
               categoriesList={categoriesList}
-              transactionsList={transactionsList}
               categorySpentMap={categorySpentMap}
               tourActive={tourActive}
               tourStep={tourStep}
@@ -1217,14 +1199,19 @@ export default function DashboardClient({
               handleDeleteCategory={handleDeleteCategory}
               handleOpenLogTransaction={handleOpenLogTransaction}
               recentFilter={recentFilter}
-              setRecentFilter={setRecentFilter}
+              setRecentFilter={(val) => {
+                setRecentFilter(val);
+                setRecentPage(1);
+              }}
               recentStartDate={recentStartDate}
               setRecentStartDate={setRecentStartDate}
               recentEndDate={recentEndDate}
               setRecentEndDate={setRecentEndDate}
               recentPage={recentPage}
               setRecentPage={setRecentPage}
-              filteredRecentTransactions={filteredRecentTransactions}
+              recentTotalPages={recentTotalPages}
+              isRecentLoading={isRecentLoading}
+              filteredRecentTransactions={recentTransactions}
               formatTransactionDateTime={formatTransactionDateTime}
             />
           )}
@@ -1234,8 +1221,8 @@ export default function DashboardClient({
             <AnalyticsTab
               pocketsList={pocketsList}
               categoriesList={categoriesList}
-              transactionsList={transactionsList}
               totalBalance={totalBalance}
+              initialAnalyticsData={initialAnalyticsData}
             />
           )}
 
