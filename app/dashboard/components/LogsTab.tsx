@@ -55,6 +55,8 @@ interface LogsTabProps {
   setRecentStartDate: (val: string) => void;
   recentEndDate: string;
   setRecentEndDate: (val: string) => void;
+  recentCategory?: string;
+  setRecentCategory?: (val: string) => void;
   recentPage: number;
   setRecentPage: React.Dispatch<React.SetStateAction<number>>;
   recentTotalPages?: number;
@@ -107,6 +109,8 @@ export default function LogsTab({
   setRecentStartDate,
   recentEndDate,
   setRecentEndDate,
+  recentCategory = "all",
+  setRecentCategory = () => {},
   recentPage,
   setRecentPage,
   recentTotalPages = 1,
@@ -345,33 +349,52 @@ export default function LogsTab({
 
       {/* Recent Activity */}
       <div id="tour-recent-activity" className={`flex flex-col gap-3 border-t-2 border-black pt-4 transition-all ${tourActive && tourStep === 4 ? "border-4 border-white p-2 bg-white/5 animate-pulse rounded-lg" : ""}`}>
-        <div className="flex justify-between items-center">
+        <div className="flex flex-col gap-2.5">
           <h3 className="font-cinzel font-bold text-md text-white text-left">Recent Activity</h3>
-          <div className="w-36">
-            <BrutalistSelect
-              value={recentFilter}
-              onChange={(val) => {
-                setRecentFilter(val as any);
-                setRecentPage(1);
-              }}
-              options={[
-                { value: "all", label: "All Time" },
-                { value: "day", label: "1 Day" },
-                { value: "week", label: "Last 7 Days" },
-                { value: "month", label: "Last 1 Month" },
-                { value: "3months", label: "Last 3 Months" },
-                { value: "6months", label: "Last 6 Months" },
-                { value: "year", label: "Last Year" },
-                { value: "custom", label: "📅 Custom" },
-              ]}
-            />
+          <div className="grid grid-cols-2 gap-2 w-full">
+            <div className="w-full">
+              <BrutalistSelect
+                value={recentFilter}
+                onChange={(val) => {
+                  setRecentFilter(val as any);
+                  setRecentPage(1);
+                }}
+                options={[
+                  { value: "all", label: "All Time" },
+                  { value: "day", label: "1 Day" },
+                  { value: "week", label: "Last 7 Days" },
+                  { value: "month", label: "Last 1 Month" },
+                  { value: "3months", label: "Last 3 Months" },
+                  { value: "6months", label: "Last 6 Months" },
+                  { value: "year", label: "Last Year" },
+                  { value: "custom", label: "📅 Custom" },
+                ]}
+              />
+            </div>
+            <div className="w-full">
+              <BrutalistSelect
+                value={recentCategory}
+                onChange={(val) => {
+                  setRecentCategory(val);
+                  setRecentPage(1);
+                }}
+                options={[
+                  { value: "all", label: "All Categories" },
+                  ...categoriesList.map((c) => ({
+                    value: c.name,
+                    label: `${getCategoryEmoji(c.icon)} ${c.name}`,
+                  })),
+                  { value: "transfers", label: "🔄 Transfers" },
+                ]}
+              />
+            </div>
           </div>
         </div>
 
         {recentFilter === "custom" && (
-          <div className="grid grid-cols-2 gap-2 p-2 border-2 border-black bg-zinc-950 rounded-lg">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2.5 border-2 border-black bg-zinc-950 shadow-[2px_2px_0px_#000]">
             <div className="flex flex-col gap-0.5 text-left">
-              <label className="text-[9px] font-bold text-zinc-300">Start Date</label>
+              <label className="text-[10px] font-bold text-zinc-300">Start Date</label>
               <input
                 type="date"
                 value={recentStartDate}
@@ -379,11 +402,11 @@ export default function LogsTab({
                   setRecentStartDate(e.target.value);
                   setRecentPage(1);
                 }}
-                className="p-1 border border-black text-xs bg-zinc-900 text-white outline-none rounded-md focus:bg-zinc-800 font-mono"
+                className="p-1.5 border border-black text-xs bg-zinc-900 text-white outline-none focus:bg-zinc-800 font-mono w-full"
               />
             </div>
             <div className="flex flex-col gap-0.5 text-left">
-              <label className="text-[9px] font-bold text-zinc-300">End Date</label>
+              <label className="text-[10px] font-bold text-zinc-300">End Date</label>
               <input
                 type="date"
                 value={recentEndDate}
@@ -391,7 +414,7 @@ export default function LogsTab({
                   setRecentEndDate(e.target.value);
                   setRecentPage(1);
                 }}
-                className="p-1 border border-black text-xs bg-zinc-900 text-white outline-none rounded-md focus:bg-zinc-800 font-mono"
+                className="p-1.5 border border-black text-xs bg-zinc-900 text-white outline-none focus:bg-zinc-800 font-mono w-full"
               />
             </div>
           </div>

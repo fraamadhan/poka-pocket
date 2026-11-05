@@ -38,7 +38,9 @@ export default function AnalyticsTab({
   initialAnalyticsData,
 }: AnalyticsTabProps) {
   // Filters State for Analytics (Processed in Backend)
-  const [filterTime, setFilterTime] = useState<"day" | "week" | "month" | "year" | "all">("month");
+  const [filterTime, setFilterTime] = useState<"day" | "week" | "month" | "year" | "custom" | "all">("month");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [filterPocket, setFilterPocket] = useState<string>("all");
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [filterType, setFilterType] = useState<"all" | "expense" | "income">("all");
@@ -73,6 +75,8 @@ export default function AnalyticsTab({
       setIsUpdating(true);
       const res = await getAnalyticsData({
         filterTime,
+        startDate,
+        endDate,
         filterPocket,
         filterCategory,
         filterType,
@@ -89,7 +93,7 @@ export default function AnalyticsTab({
     return () => {
       isCancelled = true;
     };
-  }, [filterTime, filterPocket, filterCategory, filterType]);
+  }, [filterTime, startDate, endDate, filterPocket, filterCategory, filterType]);
 
   const totalFilteredIncome = analyticsData.totalIncome;
   const totalFilteredExpense = analyticsData.totalExpense;
@@ -217,19 +221,43 @@ export default function AnalyticsTab({
         <h4 className="font-cinzel font-bold text-sm border-b border-black pb-1">🔮 Filter Transactions</h4>
         
         {/* Time range buttons */}
-        <div className="flex gap-1">
-          {(["day", "week", "month", "all"] as const).map((r) => (
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-1">
+          {(["day", "week", "month", "year", "all", "custom"] as const).map((r) => (
             <button
               key={r}
+              type="button"
               onClick={() => setFilterTime(r)}
-              className={`flex-1 py-1.5 border border-black text-xs font-bold uppercase ${
-                filterTime === r ? "bg-sky-blue text-dungeon" : "bg-zinc-900 text-zinc-300 hover:bg-zinc-800"
+              className={`py-1.5 px-1 border border-black text-xs font-bold uppercase transition-all ${
+                filterTime === r ? "bg-sky-blue text-dungeon shadow-[1px_1px_0px_#000]" : "bg-zinc-900 text-zinc-300 hover:bg-zinc-800"
               }`}
             >
-              {r === "all" ? "All" : r}
+              {r === "all" ? "All Time" : r === "custom" ? "📅 Custom" : r}
             </button>
           ))}
         </div>
+
+        {filterTime === "custom" && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2 border-2 border-black bg-zinc-900 shadow-[2px_2px_0px_#000]">
+            <div className="flex flex-col gap-0.5 text-left">
+              <label className="text-[10px] font-bold text-zinc-300">Start Date</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="p-1.5 border border-black text-xs bg-zinc-950 text-white outline-none focus:bg-zinc-900 font-mono w-full"
+              />
+            </div>
+            <div className="flex flex-col gap-0.5 text-left">
+              <label className="text-[10px] font-bold text-zinc-300">End Date</label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="p-1.5 border border-black text-xs bg-zinc-950 text-white outline-none focus:bg-zinc-900 font-mono w-full"
+              />
+            </div>
+          </div>
+        )}
 
         {/* Pocket & Category selection */}
         <div className="grid grid-cols-2 gap-2 text-xs">

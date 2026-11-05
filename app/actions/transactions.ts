@@ -3,7 +3,7 @@
 import { db } from "@/db";
 import { transactions, pockets, categories } from "@/db/schema";
 import { auth } from "@/auth";
-import { eq, and, desc, asc, sql, isNotNull, gte, lte } from "drizzle-orm";
+import { eq, and, desc, asc, sql, isNotNull, isNull, gte, lte } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { parseCurrencyInput } from "@/lib/currency";
 
@@ -20,6 +20,7 @@ export interface RecentTransactionsFilters {
   filter?: "all" | "day" | "week" | "month" | "3months" | "6months" | "year" | "custom";
   startDate?: string;
   endDate?: string;
+  category?: string;
   page?: number;
   pageSize?: number;
 }
@@ -31,6 +32,7 @@ export async function getRecentTransactions(filters: RecentTransactionsFilters =
       filter = "all",
       startDate,
       endDate,
+      category = "all",
       page = 1,
       pageSize = 5,
     } = filters;
@@ -66,12 +68,20 @@ export async function getRecentTransactions(filters: RecentTransactionsFilters =
       conditions.push(gte(transactions.createdAt, dateLimit));
     }
 
+    if (category === "transfers") {
+      conditions.push(isNull(transactions.categoryId));
+    } else if (category && category !== "all") {
+      conditions.push(eq(categories.name, category));
+    }
+
     const whereClause = and(...conditions);
 
     // Get total count for pagination
     const countResult = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(transactions)
+      .leftJoin(pockets, eq(transactions.pocketId, pockets.id))
+      .leftJoin(categories, eq(transactions.categoryId, categories.id))
       .where(whereClause);
 
     const totalCount = countResult[0]?.count || 0;
@@ -153,7 +163,9 @@ export async function getCurrentMonthCategorySpent() {
 }
 
 export interface AnalyticsFilters {
-  filterTime?: "day" | "week" | "month" | "year" | "all";
+  filterTime?: "day" | "week" | "month" | "year" | "custom" | "all";
+  startDate?: string;
+  endDate?: string;
   filterPocket?: string;
   filterCategory?: string;
   filterType?: "all" | "expense" | "income";
@@ -171,6 +183,8 @@ export async function getAnalyticsData(filters: AnalyticsFilters = {}) {
     const userId = await getUserId();
     const {
       filterTime = "month",
+      startDate,
+      endDate,
       filterPocket = "all",
       filterCategory = "all",
       filterType = "all",
@@ -179,7 +193,18 @@ export async function getAnalyticsData(filters: AnalyticsFilters = {}) {
     const conditions = [eq(transactions.userId, userId)];
 
     // 1. Time Filter
-    if (filterTime && filterTime !== "all") {
+    if (filterTime === "custom") {
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        conditions.push(gte(transactions.createdAt, start));
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        conditions.push(lte(transactions.createdAt, end));
+      }
+    } else if (filterTime && filterTime !== "all") {
       const dateLimit = new Date();
       if (filterTime === "day") {
         dateLimit.setDate(dateLimit.getDate() - 1);

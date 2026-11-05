@@ -226,6 +226,7 @@ export default function DashboardClient({
   const [recentFilter, setRecentFilter] = useState<"day" | "week" | "month" | "3months" | "6months" | "year" | "custom" | "all">("all");
   const [recentStartDate, setRecentStartDate] = useState("");
   const [recentEndDate, setRecentEndDate] = useState("");
+  const [recentCategory, setRecentCategory] = useState("all");
   const [recentTotalPages, setRecentTotalPages] = useState(initialRecentTotalPages || 1);
   const [recentTransactions, setRecentTransactions] = useState<Transaction[]>(
     initialRecentTransactions || initialTransactions || []
@@ -250,6 +251,7 @@ export default function DashboardClient({
         filter: recentFilter,
         startDate: recentStartDate,
         endDate: recentEndDate,
+        category: recentCategory,
         page: recentPage,
         pageSize: 5,
       });
@@ -266,7 +268,7 @@ export default function DashboardClient({
     return () => {
       isCancelled = true;
     };
-  }, [recentFilter, recentStartDate, recentEndDate, recentPage]);
+  }, [recentFilter, recentStartDate, recentEndDate, recentCategory, recentPage]);
 
   // Helper to refresh paginated transactions and current month category spending
   const refreshRecentAndBudgets = async () => {
@@ -275,6 +277,7 @@ export default function DashboardClient({
         filter: recentFilter,
         startDate: recentStartDate,
         endDate: recentEndDate,
+        category: recentCategory,
         page: recentPage,
         pageSize: 5,
       }),
@@ -1207,6 +1210,11 @@ export default function DashboardClient({
               setRecentStartDate={setRecentStartDate}
               recentEndDate={recentEndDate}
               setRecentEndDate={setRecentEndDate}
+              recentCategory={recentCategory}
+              setRecentCategory={(val) => {
+                setRecentCategory(val);
+                setRecentPage(1);
+              }}
               recentPage={recentPage}
               setRecentPage={setRecentPage}
               recentTotalPages={recentTotalPages}
