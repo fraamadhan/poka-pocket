@@ -44,7 +44,10 @@ export default function AnalyticsTab({
   const [filterPocket, setFilterPocket] = useState<string>("all");
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [filterType, setFilterType] = useState<"all" | "expense" | "income">("all");
-  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
+
+  const activeCategory = hoveredCategory || selectedCategory;
 
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData>(
     initialAnalyticsData || {
@@ -217,16 +220,20 @@ export default function AnalyticsTab({
                   d={pathD}
                   fill={slice.color}
                   fillRule="evenodd"
-                  stroke="#000"
-                  strokeWidth="2.5"
-                  className="cursor-pointer transition-all duration-150"
+                  stroke={isSelected ? "#fff" : "#000"}
+                  strokeWidth={isSelected ? "3" : "2"}
+                  className="cursor-pointer transition-all duration-200"
                   style={{
-                    filter: isSelected ? "drop-shadow(0px 0px 6px rgba(255,255,255,0.7))" : undefined,
+                    opacity: activeCategory ? (isSelected ? 1 : 0.35) : 1,
+                    filter: isSelected ? "drop-shadow(0px 0px 8px rgba(255,255,255,0.8))" : undefined,
                     transformOrigin: `${cx}px ${cy}px`,
                   }}
-                  onMouseEnter={() => setActiveCategory(slice.name)}
-                  onMouseLeave={() => setActiveCategory(null)}
-                  onClick={() => setActiveCategory((prev) => (prev === slice.name ? null : slice.name))}
+                  onMouseEnter={() => setHoveredCategory(slice.name)}
+                  onMouseLeave={() => setHoveredCategory(null)}
+                  onClick={() => {
+                    setSelectedCategory((prev) => (prev === slice.name ? null : slice.name));
+                    setHoveredCategory(null);
+                  }}
                 >
                   <title>{`${slice.emoji} ${slice.name}: ${slice.pct.toFixed(1)}% (Rp ${slice.spent.toLocaleString("id-ID")})`}</title>
                 </path>
@@ -251,9 +258,9 @@ export default function AnalyticsTab({
                   {activeItem.emoji} {activeItem.name}
                 </span>
                 <div className="flex items-center gap-1 font-mono text-[10px] sm:text-[11px] mt-1 leading-none">
-                  <span className="text-white font-bold">{activeItem.pct.toFixed(1)}%</span>
+                  <span className="text-yellow-400 font-bold">{activeItem.pct.toFixed(1)}%</span>
                   <span className="text-zinc-500">•</span>
-                  <span className="text-zinc-300 font-bold">Rp {activeItem.spent.toLocaleString("id-ID")}</span>
+                  <span className="text-white font-bold">Rp {activeItem.spent.toLocaleString("id-ID")}</span>
                 </div>
               </div>
             ) : (
@@ -277,12 +284,15 @@ export default function AnalyticsTab({
                 <button
                   key={slice.name}
                   type="button"
-                  onMouseEnter={() => setActiveCategory(slice.name)}
-                  onMouseLeave={() => setActiveCategory(null)}
-                  onClick={() => setActiveCategory((prev) => (prev === slice.name ? null : slice.name))}
-                  className={`flex flex-col gap-1 p-2 border-2 text-xs transition-all text-left ${
+                  onMouseEnter={() => setHoveredCategory(slice.name)}
+                  onMouseLeave={() => setHoveredCategory(null)}
+                  onClick={() => {
+                    setSelectedCategory((prev) => (prev === slice.name ? null : slice.name));
+                    setHoveredCategory(null);
+                  }}
+                  className={`flex flex-col gap-1 p-2 border-2 text-xs transition-all text-left cursor-pointer ${
                     isSelected
-                      ? "border-white bg-zinc-800 shadow-[2px_2px_0px_#fff]"
+                      ? "border-sky-400 bg-zinc-800 shadow-[2px_2px_0px_#38bdf8] scale-[1.01]"
                       : "border-black bg-zinc-900 hover:bg-zinc-800 shadow-[1px_1px_0px_#000]"
                   }`}
                 >
@@ -297,7 +307,7 @@ export default function AnalyticsTab({
                   </div>
                   <div className="flex items-center justify-between font-mono text-[11px] pl-4.5 w-full">
                     <span className="text-yellow-400 font-bold">{slice.pct.toFixed(1)}%</span>
-                    <span className="text-zinc-300 font-medium">Rp {slice.spent.toLocaleString("id-ID")}</span>
+                    <span className="text-white font-bold tracking-tight">Rp {slice.spent.toLocaleString("id-ID")}</span>
                   </div>
                 </button>
               );

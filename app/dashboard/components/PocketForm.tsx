@@ -180,9 +180,11 @@ export default function PocketForm({
             <h4 className="font-bold text-white text-xs truncate">
               {pocketName.trim() || "Pocket Name"}
             </h4>
-            <span className="text-[9px] text-zinc-400 font-mono">
-              {isGoal ? "Saving Goal" : isLocked ? "Locked Fund" : "Wallet"}
-            </span>
+            {(isGoal || isLocked) && (
+              <span className="text-[9px] text-zinc-400 font-mono">
+                {isGoal ? "Saving Goal" : "Locked Fund"}
+              </span>
+            )}
             <span className="font-mono font-bold text-xs text-white mt-1">
               Rp {parseFloat(pocketBalance || "0").toLocaleString("id-ID")}
             </span>

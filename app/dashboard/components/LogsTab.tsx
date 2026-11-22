@@ -127,26 +127,38 @@ export default function LogsTab({
   const [selectedPocket, setSelectedPocket] = useState<Pocket | null>(null);
   const [pocketTransactions, setPocketTransactions] = useState<Transaction[]>([]);
   const [isLoadingPocketTrans, setIsLoadingPocketTrans] = useState(false);
+  const [pocketTransPage, setPocketTransPage] = useState(1);
+  const [pocketTransTotalPages, setPocketTransTotalPages] = useState(1);
+  const [pocketTransTotal, setPocketTransTotal] = useState(0);
   const [pocketViewMode, setPocketViewMode] = useState<"grid" | "list">("grid");
+
+  const handleOpenPocketDetails = (pocket: Pocket) => {
+    setPocketTransPage(1);
+    setSelectedPocket(pocket);
+  };
 
   // Fetch transactions for selected pocket
   useEffect(() => {
     if (!selectedPocket) {
       setPocketTransactions([]);
+      setPocketTransTotal(0);
+      setPocketTransTotalPages(1);
       return;
     }
     let isMounted = true;
     setIsLoadingPocketTrans(true);
-    getPocketTransactions(selectedPocket.id).then((res) => {
+    getPocketTransactions(selectedPocket.id, pocketTransPage, 15).then((res) => {
       if (isMounted) {
         setPocketTransactions((res.data as any) || []);
+        setPocketTransTotal(res.total ?? (res.data?.length || 0));
+        setPocketTransTotalPages(res.totalPages ?? 1);
         setIsLoadingPocketTrans(false);
       }
     });
     return () => {
       isMounted = false;
     };
-  }, [selectedPocket]);
+  }, [selectedPocket, pocketTransPage]);
 
   // Lock body scroll when pocket or transaction detail modal is open
   useEffect(() => {
@@ -272,7 +284,7 @@ export default function LogsTab({
               return (
                 <div
                   key={pocket.id}
-                  onClick={() => setSelectedPocket(pocket)}
+                  onClick={() => handleOpenPocketDetails(pocket)}
                   className={`relative flex flex-col justify-between border-4 border-black p-3 bg-zinc-950 shadow-[3px_3px_0px_#000] hover:-translate-y-1 hover:shadow-[5px_5px_0px_#000] transition-all text-white cursor-pointer group overflow-hidden select-none ${isGoalReached ? "ring-2 ring-amber-400" : ""
                     }`}
                   title="Click to view pocket transactions"
@@ -350,9 +362,11 @@ export default function LogsTab({
                     >
                       {pocket.name}
                     </h4>
-                    <span className="text-[10px] text-zinc-400 font-mono capitalize">
-                      {pocket.isGoal ? "Saving Goal" : pocket.isLocked ? "Locked Fund" : "Wallet"}
-                    </span>
+                    {(pocket.isGoal || pocket.isLocked) && (
+                      <span className="text-[10px] text-zinc-400 font-mono capitalize">
+                        {pocket.isGoal ? "Saving Goal" : "Locked Fund"}
+                      </span>
+                    )}
                   </div>
 
                   {/* Card Bottom: Balance & Goal Progress */}
@@ -399,17 +413,18 @@ export default function LogsTab({
               return (
                 <div
                   key={pocket.id}
-                  onClick={() => setSelectedPocket(pocket)}
-                  className={`w-full flex flex-col border-4 border-black p-3 bg-zinc-950 shadow-[3px_3px_0px_#000] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-[1px_1px_0px_#000] transition-all text-white cursor-pointer group relative overflow-hidden ${pocket.isGoal && isGoalReached ? "border-amber-400 bg-amber-950/10" : ""
-                    }`}
+                  onClick={() => handleOpenPocketDetails(pocket)}
+                  className={`w-full flex-shrink-0 min-h-[68px] border-4 border-black p-3 bg-zinc-950 shadow-[3px_3px_0px_#000] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-[1px_1px_0px_#000] transition-all text-white cursor-pointer group relative overflow-hidden flex flex-col justify-center gap-2 ${
+                    pocket.isGoal && isGoalReached ? "border-amber-400 bg-amber-950/10" : ""
+                  }`}
                   style={{ borderLeftColor: theme.accent, borderLeftWidth: "8px" }}
                   title="Click to view pocket transactions"
                 >
                   <div className="flex items-center justify-between gap-2.5 w-full">
-                    {/* Left: Icon & Pocket Name */}
+                    {/* Left: Icon Logo & Pocket Name */}
                     <div className="flex items-center gap-2.5 min-w-0 flex-1">
                       <div
-                        className="w-10 h-10 border-2 border-black rounded flex items-center justify-center text-lg text-black shadow-[1px_1px_0px_#000] flex-shrink-0 group-hover:scale-105 transition-transform"
+                        className="w-10 h-10 border-2 border-black rounded flex items-center justify-center text-xl text-black shadow-[1px_1px_0px_#000] flex-shrink-0 group-hover:scale-105 transition-transform"
                         style={{ backgroundColor: theme.accent }}
                       >
                         {getPocketEmoji(parsedIcon)}
@@ -424,9 +439,14 @@ export default function LogsTab({
                               🔒
                             </span>
                           )}
-                          {pocket.isGoal && isGoalReached && (
-                            <span className="text-[9px] px-1.5 py-0.2 bg-amber-400 border border-black text-black font-extrabold rounded animate-pulse" title="Goal Reached">
-                              🏆
+                          {pocket.isGoal && (
+                            <span
+                              className={`text-[9px] px-1.5 py-0.2 border border-black font-extrabold rounded ${
+                                isGoalReached ? "bg-amber-400 text-black animate-pulse" : "bg-zinc-800 text-amber-300"
+                              }`}
+                              title={isGoalReached ? "Goal Reached" : "Goal"}
+                            >
+                              {isGoalReached ? "🏆" : "🎯"}
                             </span>
                           )}
                           {isOverdue && (
@@ -435,38 +455,44 @@ export default function LogsTab({
                             </span>
                           )}
                         </div>
-                        <span className="text-[10px] text-zinc-400 font-mono capitalize">
-                          {pocket.isGoal ? "Saving Goal" : pocket.isLocked ? "Locked Fund" : "Wallet"}
-                        </span>
+                        {(pocket.isGoal || pocket.isLocked) && (
+                          <span className="text-[10px] text-zinc-400 font-mono capitalize block mt-0.5">
+                            {pocket.isGoal ? "Saving Goal" : "Locked Fund"}
+                          </span>
+                        )}
                       </div>
                     </div>
 
-                    {/* Right: Nominal Balance & Quick Actions */}
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <div className="text-right">
-                        <span className="text-[9px] font-mono text-zinc-400 uppercase font-bold block leading-none">Saldo</span>
-                        <span className="font-mono font-bold text-xs sm:text-sm text-white block mt-0.5">
+                    {/* Right: Nominal Saldo & Action Buttons */}
+                    <div className="flex items-center gap-2.5 flex-shrink-0">
+                      <div className="text-right flex flex-col items-end">
+                        <span className="text-[9px] font-mono text-zinc-400 uppercase font-bold tracking-wider leading-none">
+                          Saldo
+                        </span>
+                        <span className="font-mono font-bold text-xs sm:text-sm text-white mt-1 leading-none">
                           Rp {currentBalance.toLocaleString("id-ID")}
                         </span>
                       </div>
-                      <div className="flex gap-1">
+
+                      {/* Action buttons (Edit & Delete) */}
+                      <div className="flex items-center gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenEditPocket(pocket);
-                          }}
-                          className="p-1.5 bg-sky-blue border border-black shadow-[1px_1px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all text-xs text-dungeon cursor-pointer"
+                          type="button"
+                          onClick={() => handleOpenEditPocket(pocket)}
+                          className="w-7 h-7 bg-sky-blue border-2 border-black text-black flex items-center justify-center text-xs font-bold shadow-[1px_1px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all cursor-pointer flex-shrink-0"
                           title="Edit Pocket"
                         >
                           ✏️
                         </button>
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeletePocket(pocket.id);
-                          }}
-                          className={`p-1.5 border border-black shadow-[1px_1px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all text-xs text-dungeon cursor-pointer ${pocket.isLocked ? "bg-zinc-700 text-zinc-400 opacity-60 cursor-not-allowed" : "bg-baby-pink"
-                            }`}
+                          type="button"
+                          onClick={() => handleDeletePocket(pocket.id)}
+                          disabled={pocket.isLocked}
+                          className={`w-7 h-7 border-2 border-black flex items-center justify-center text-xs font-bold shadow-[1px_1px_0px_#000] transition-all flex-shrink-0 ${
+                            pocket.isLocked
+                              ? "bg-zinc-800 text-zinc-600 opacity-50 cursor-not-allowed border-zinc-700"
+                              : "bg-baby-pink text-black hover:bg-pink-300 hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 cursor-pointer"
+                          }`}
                           title={pocket.isLocked ? "Locked pocket (cannot be deleted)" : "Delete Pocket"}
                         >
                           🗑️
@@ -787,9 +813,11 @@ export default function LogsTab({
                         <h3 className="font-cinzel font-bold text-sm truncate max-w-[240px]">
                           {selectedPocket.name}
                         </h3>
-                        <span className="text-[10px] text-zinc-400 font-mono capitalize">
-                          {selectedPocket.isGoal ? "Saving Goal Pocket" : selectedPocket.isLocked ? "Locked Pocket" : "Wallet Pocket"}
-                        </span>
+                        {(selectedPocket.isGoal || selectedPocket.isLocked) && (
+                          <span className="text-[10px] text-zinc-400 font-mono capitalize">
+                            {selectedPocket.isGoal ? "Saving Goal Pocket" : "Locked Pocket"}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <button
@@ -841,7 +869,7 @@ export default function LogsTab({
               <div className="flex justify-between items-center text-xs px-0.5">
                 <span className="font-cinzel font-bold text-zinc-200">Pocket Transactions</span>
                 <span className="font-mono text-[10px] text-zinc-400">
-                  {pocketTransactions.length} recorded
+                  {pocketTransTotal} recorded
                 </span>
               </div>
 
@@ -883,6 +911,31 @@ export default function LogsTab({
                   ))
                 )}
               </div>
+
+              {/* Pagination Controls */}
+              {pocketTransTotalPages > 1 && (
+                <div className="flex justify-between items-center pt-2 border-t border-zinc-800 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setPocketTransPage((p) => Math.max(1, p - 1))}
+                    disabled={pocketTransPage <= 1 || isLoadingPocketTrans}
+                    className="px-2.5 py-1 bg-zinc-900 border border-black text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-800 font-mono text-[11px] shadow-[1px_1px_0px_#000] cursor-pointer"
+                  >
+                    ◀ Prev
+                  </button>
+                  <span className="font-mono text-[11px] text-zinc-300 font-bold">
+                    Page {pocketTransPage} of {pocketTransTotalPages}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPocketTransPage((p) => Math.min(pocketTransTotalPages, p + 1))}
+                    disabled={pocketTransPage >= pocketTransTotalPages || isLoadingPocketTrans}
+                    className="px-2.5 py-1 bg-zinc-900 border border-black text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-800 font-mono text-[11px] shadow-[1px_1px_0px_#000] cursor-pointer"
+                  >
+                    Next ▶
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Footer Buttons */}

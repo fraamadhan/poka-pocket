@@ -130,9 +130,18 @@ export async function getRecentTransactions(filters: RecentTransactionsFilters =
   }
 }
 
-export async function getPocketTransactions(pocketId: string) {
+export async function getPocketTransactions(pocketId: string, page: number = 1, limit: number = 15) {
   try {
     const userId = await getUserId();
+    const offset = (page - 1) * limit;
+
+    const [countResult] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(transactions)
+      .where(and(eq(transactions.userId, userId), eq(transactions.pocketId, pocketId)));
+
+    const total = Number(countResult?.count || 0);
+
     const result = await db
       .select({
         id: transactions.id,
@@ -149,12 +158,15 @@ export async function getPocketTransactions(pocketId: string) {
       .leftJoin(categories, eq(transactions.categoryId, categories.id))
       .where(and(eq(transactions.userId, userId), eq(transactions.pocketId, pocketId)))
       .orderBy(desc(transactions.createdAt))
-      .limit(50);
+      .limit(limit)
+      .offset(offset);
 
-    return { data: result };
+    const totalPages = Math.ceil(total / limit) || 1;
+
+    return { data: result, total, totalPages, page, limit };
   } catch (error: any) {
     console.error("Failed to fetch pocket transactions:", error);
-    return { data: [], error: error.message || "Failed to load pocket transactions." };
+    return { data: [], total: 0, totalPages: 1, page: 1, limit, error: error.message || "Failed to load pocket transactions." };
   }
 }
 

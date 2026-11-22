@@ -1006,13 +1006,10 @@ export default function DashboardClient({
       <main className="w-full max-w-md mx-auto bg-zinc-900 border-4 border-black text-white shadow-[6px_6px_0px_#000] flex flex-col justify-between">
         
         {/* Top Header */}
-        <header id="tour-top" className="border-b-4 border-black p-4 bg-sky-blue flex items-center justify-between">
+        <header id="tour-top" className="border-b-4 border-black p-4 bg-sky-blue flex items-center justify-center">
           <h1 className="font-cinzel text-xl font-bold tracking-wider text-dungeon">
             POKA POCKET 🪙
           </h1>
-          <div className="font-vt323 text-xl bg-baby-pink border-2 border-black px-2 py-0.5 text-dungeon">
-            ACTIVE MEMBER
-          </div>
         </header>
 
         {/* Tab Selection Navigation */}
@@ -1055,34 +1052,39 @@ export default function DashboardClient({
         <div className="p-6 flex-1 flex flex-col gap-6">
           
           {/* User Info Bar */}
-          <div className="flex items-center gap-4 bg-zinc-950 border-4 border-black p-3 shadow-[3px_3px_0px_#000]">
-            <img 
-              src={user.image || "/img/default_profile_pic.jpg"} 
-              alt={user.name || "Avatar"} 
-              className="w-12 h-12 rounded-full border-2 border-black object-cover"
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = "/img/default_profile_pic.jpg";
-              }}
-            />
-            <div className="text-left flex-1">
-              <h2 className="font-cinzel font-bold text-lg text-white leading-tight">
+          <div className="flex flex-col gap-2.5 bg-zinc-950 border-4 border-black p-3.5 shadow-[3px_3px_0px_#000]">
+            {/* Row 1: Avatar image & greeting side by side */}
+            <div className="flex items-center gap-3">
+              <img 
+                src={user.image || "/img/default_profile_pic.jpg"} 
+                alt={user.name || "Avatar"} 
+                className="w-10 h-10 rounded-full border-2 border-black object-cover flex-shrink-0"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = "/img/default_profile_pic.jpg";
+                }}
+              />
+              <h2 className="font-cinzel font-bold text-lg text-white leading-tight truncate text-left">
                 Hi, {displayName}!
               </h2>
-              <p className="text-xs text-zinc-400">
+            </div>
+
+            {/* Row 2: Description on the left, Help Tour button at bottom right */}
+            <div className="flex items-end justify-between gap-2">
+              <p className="text-xs text-zinc-400 text-left flex-1">
                 {activeTab === "logs" ? "Manage pockets & log items." : "Audit budgets & liquidity trends."}
               </p>
+              <button
+                onClick={() => {
+                  setTourStep(0);
+                  setActiveTab("logs");
+                  setTourActive(true);
+                }}
+                className="px-2.5 py-1 bg-sky-blue border-2 border-black text-dungeon text-xs font-bold shadow-[2px_2px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 active:translate-x-0 active:translate-y-0 active:shadow-none transition-all flex items-center gap-1 cursor-pointer flex-shrink-0"
+                title="Restart guide tour"
+              >
+                ❓ Help Tour
+              </button>
             </div>
-            <button
-              onClick={() => {
-                setTourStep(0);
-                setActiveTab("logs");
-                setTourActive(true);
-              }}
-              className="px-2 py-1 bg-sky-blue border-2 border-black text-dungeon text-xs font-bold shadow-[2px_2px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 active:translate-x-0 active:translate-y-0 active:shadow-none transition-all flex items-center gap-1 cursor-pointer"
-              title="Restart guide tour"
-            >
-              ❓ Help Tour
-            </button>
           </div>
 
           {/* PWA Custom Install Banner */}
