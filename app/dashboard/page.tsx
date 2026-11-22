@@ -44,7 +44,7 @@ export default async function DashboardPage() {
     getExportHistory(),
     getRecurringRules(),
     getCurrentMonthCategorySpent(),
-    getAnalyticsData({ filterTime: "month", filterPocket: "all", filterCategory: "all", filterType: "all" }),
+    getAnalyticsData({ filterTime: "this_month", filterPocket: "all", filterCategory: "all", filterType: "all" }),
   ]);
 
   const pocketsList = pocketsResponse.data || [];

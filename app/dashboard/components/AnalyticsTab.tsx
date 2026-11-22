@@ -38,12 +38,13 @@ export default function AnalyticsTab({
   initialAnalyticsData,
 }: AnalyticsTabProps) {
   // Filters State for Analytics (Processed in Backend)
-  const [filterTime, setFilterTime] = useState<"day" | "week" | "month" | "year" | "custom" | "all">("month");
+  const [filterTime, setFilterTime] = useState<"day" | "week" | "this_month" | "month" | "year" | "custom" | "all">("this_month");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [filterPocket, setFilterPocket] = useState<string>("all");
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [filterType, setFilterType] = useState<"all" | "expense" | "income">("all");
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData>(
     initialAnalyticsData || {
@@ -99,115 +100,209 @@ export default function AnalyticsTab({
   const totalFilteredExpense = analyticsData.totalExpense;
   const filteredCategorySpentMap = analyticsData.categorySpentMap;
 
-  // Convert ISO string dates to Date objects for the SVG chart
-  const manaPoints = analyticsData.manaPoints.map((p) => ({
-    date: new Date(p.date),
-    balance: p.balance,
-  }));
+  // Retro neo-brutalist color palette for category slices
+  const PIE_COLORS = [
+    "#87CEEB", // sky blue
+    "#FFB6C1", // baby pink
+    "#FACC15", // yellow
+    "#4ADE80", // lime green
+    "#FB923C", // orange
+    "#C084FC", // purple
+    "#F87171", // soft red
+    "#2DD4BF", // teal
+    "#A78BFA", // violet
+    "#F472B6", // rose
+    "#60A5FA", // blue
+    "#34D399", // emerald
+  ];
 
-  // Generate SVG path for Mana Curve Line Chart
-  const renderManaCurveSvg = () => {
-    if (manaPoints.length < 2) {
+  const polarToCartesian = (cx: number, cy: number, radius: number, angleInDegrees: number) => {
+    const angleInRadians = ((angleInDegrees - 90) * Math.PI) / 180.0;
+    return {
+      x: cx + radius * Math.cos(angleInRadians),
+      y: cy + radius * Math.sin(angleInRadians),
+    };
+  };
+
+  const getDonutSlicePath = (cx: number, cy: number, r: number, R: number, startAngle: number, endAngle: number) => {
+    const outerStart = polarToCartesian(cx, cy, R, startAngle);
+    const outerEnd = polarToCartesian(cx, cy, R, endAngle);
+    const innerStart = polarToCartesian(cx, cy, r, endAngle);
+    const innerEnd = polarToCartesian(cx, cy, r, startAngle);
+    const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
+
+    return [
+      `M ${outerStart.x.toFixed(2)} ${outerStart.y.toFixed(2)}`,
+      `A ${R} ${R} 0 ${largeArcFlag} 1 ${outerEnd.x.toFixed(2)} ${outerEnd.y.toFixed(2)}`,
+      `L ${innerStart.x.toFixed(2)} ${innerStart.y.toFixed(2)}`,
+      `A ${r} ${r} 0 ${largeArcFlag} 0 ${innerEnd.x.toFixed(2)} ${innerEnd.y.toFixed(2)}`,
+      "Z",
+    ].join(" ");
+  };
+
+  const getDonutRingPath = (cx: number, cy: number, r: number, R: number) => {
+    return [
+      `M ${cx} ${cy - R}`,
+      `A ${R} ${R} 0 1 0 ${cx} ${cy + R}`,
+      `A ${R} ${R} 0 1 0 ${cx} ${cy - R}`,
+      `M ${cx} ${cy - r}`,
+      `A ${r} ${r} 0 1 1 ${cx} ${cy + r}`,
+      `A ${r} ${r} 0 1 1 ${cx} ${cy - r}`,
+      "Z",
+    ].join(" ");
+  };
+
+  const renderSpendingPieChart = () => {
+    const categoryEntries = Object.entries(filteredCategorySpentMap)
+      .filter(([_, spent]) => spent > 0)
+      .sort((a, b) => b[1] - a[1]);
+
+    const totalExpenseFromCategories = categoryEntries.reduce((sum, [_, spent]) => sum + spent, 0);
+
+    if (categoryEntries.length === 0 || totalExpenseFromCategories === 0) {
       return (
-        <div className="h-32 flex items-center justify-center border-4 border-black bg-zinc-950 border-dashed text-zinc-400 text-xs">
-          🔒 Add more transactions to draw balance trend
+        <div className="h-40 flex flex-col items-center justify-center border-4 border-black bg-zinc-950 border-dashed text-zinc-400 text-xs p-4 text-center">
+          <span>🔒 No expense transactions found for this period.</span>
         </div>
       );
     }
 
-    const minBalance = Math.min(...manaPoints.map((p) => p.balance));
-    const maxBalance = Math.max(...manaPoints.map((p) => p.balance));
-    const range = maxBalance - minBalance || 1;
+    const cx = 140;
+    const cy = 140;
+    const innerR = 82;
+    const normalOuterR = 120;
+    const activeOuterR = 126;
 
-    // Viewbox dimensions: 300x120
-    const width = 300;
-    const height = 120;
-    const padding = 12;
-    const leftPadding = 60; // Extra room for vertical nominal text on the left
-    const rightPadding = 12;
+    let currentAngle = 0;
+    const sliceData = categoryEntries.map(([name, spent], idx) => {
+      const pct = (spent / totalExpenseFromCategories) * 100;
+      const angleSpan = (spent / totalExpenseFromCategories) * 360;
+      const startAngle = currentAngle;
+      const endAngle = currentAngle + angleSpan;
+      currentAngle = endAngle;
 
-    const coords = manaPoints.map((p, index) => {
-      const x = leftPadding + (index / (manaPoints.length - 1)) * (width - leftPadding - rightPadding);
-      const y = padding + (1 - (p.balance - minBalance) / range) * (height - 2 * padding);
-      return { x, y };
+      const matchedCat = categoriesList.find((c) => c.name.toLowerCase() === name.toLowerCase());
+      const emoji = getCategoryEmoji(matchedCat?.icon || null);
+      const color = PIE_COLORS[idx % PIE_COLORS.length];
+
+      return {
+        name,
+        spent,
+        pct,
+        startAngle,
+        endAngle,
+        emoji,
+        color,
+      };
     });
 
-    const pathData = coords.map((c, i) => `${i === 0 ? "M" : "L"} ${c.x.toFixed(1)} ${c.y.toFixed(1)}`).join(" ");
-    const areaData = `${pathData} L ${coords[coords.length - 1].x.toFixed(1)} ${height - padding} L ${coords[0].x.toFixed(1)} ${height - padding} Z`;
-
-    const startYear = manaPoints[0].date.getFullYear();
-    const endYear = manaPoints[manaPoints.length - 1].date.getFullYear();
-    const yearLabel = startYear === endYear ? `${startYear}` : `${startYear} - ${endYear}`;
-
-    const formatDateLabel = (date: Date) => {
-      return date.toLocaleDateString("en-US", { day: "numeric", month: "short" }); // e.g. "12 Jun"
-    };
-
-    const formatYAxisLabel = (value: number) => {
-      const absVal = Math.abs(value);
-      let sign = value < 0 ? "-" : "";
-      if (absVal >= 1_000_000) {
-        return `${sign}Rp ${(absVal / 1_000_000).toFixed(1)}M`;
-      }
-      if (absVal >= 1_000) {
-        return `${sign}Rp ${(absVal / 1_000).toFixed(0)}K`;
-      }
-      return `${sign}Rp ${absVal.toFixed(0)}`;
-    };
+    const activeItem = sliceData.find((s) => s.name === activeCategory);
 
     return (
-      <div className="flex flex-col gap-2">
-        {/* Top Year Indicator */}
-        <div className="flex justify-between items-center px-1">
-          <span className="text-[10px] text-zinc-400 font-mono uppercase tracking-wider">Balance History</span>
-          <span className="text-[9px] bg-zinc-800 text-zinc-300 px-1.5 py-0.5 border border-black rounded font-mono font-bold">
-            {yearLabel}
-          </span>
-        </div>
+      <div className="border-4 border-black p-4 bg-zinc-950 shadow-[3px_3px_0px_#000] flex flex-col gap-4">
+        {/* Donut Chart Container */}
+        <div className="relative w-full max-w-[280px] aspect-square mx-auto flex items-center justify-center">
+          <svg viewBox="0 0 280 280" className="w-full h-full overflow-visible">
+            {sliceData.map((slice) => {
+              const isSelected = activeCategory === slice.name;
+              const outerR = isSelected ? activeOuterR : normalOuterR;
+              const pathD =
+                sliceData.length === 1 || slice.endAngle - slice.startAngle >= 359.99
+                  ? getDonutRingPath(cx, cy, innerR, outerR)
+                  : getDonutSlicePath(cx, cy, innerR, outerR, slice.startAngle, slice.endAngle);
 
-        <div className="border-4 border-black p-3 bg-zinc-950 shadow-[3px_3px_0px_#000]">
-          <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto overflow-visible">
-            {/* Grid lines */}
-            <line x1={leftPadding} y1={padding} x2={width - rightPadding} y2={padding} stroke="#27272a" strokeWidth="2" strokeDasharray="3,3" />
-            <line x1={leftPadding} y1={height / 2} x2={width - rightPadding} y2={height / 2} stroke="#27272a" strokeWidth="2" strokeDasharray="3,3" />
-            <line x1={leftPadding} y1={height - padding} x2={width - rightPadding} y2={height - padding} stroke="#000" strokeWidth="2" />
-
-            {/* Y-Axis Nominal Labels */}
-            <text x="5" y={padding + 3} fill="#a1a1aa" fontSize="7.5" fontFamily="monospace" fontWeight="bold">
-              {formatYAxisLabel(maxBalance)}
-            </text>
-            <text x="5" y={height / 2 + 3} fill="#a1a1aa" fontSize="7.5" fontFamily="monospace" fontWeight="bold">
-              {formatYAxisLabel((maxBalance + minBalance) / 2)}
-            </text>
-            <text x="5" y={height - padding + 3} fill="#a1a1aa" fontSize="7.5" fontFamily="monospace" fontWeight="bold">
-              {formatYAxisLabel(minBalance)}
-            </text>
-
-            {/* Area Fill */}
-            <path d={areaData} fill="#87CEEB" fillOpacity="0.15" />
-
-            {/* Hard Path Line */}
-            <path d={pathData} fill="none" stroke="#fff" strokeWidth="4" strokeLinecap="square" strokeLinejoin="miter" />
-
-            {coords.map((c, i) => (
-              <circle
-                key={i}
-                cx={c.x}
-                cy={c.y}
-                r="4"
-                fill="#FFB6C1"
-                stroke="#000"
-                strokeWidth="2"
-                className="trend-point cursor-pointer"
-              >
-                <title>{`Bal: Rp ${manaPoints[i].balance.toLocaleString("id-ID")}`}</title>
-              </circle>
-            ))}
+              return (
+                <path
+                  key={slice.name}
+                  d={pathD}
+                  fill={slice.color}
+                  fillRule="evenodd"
+                  stroke="#000"
+                  strokeWidth="2.5"
+                  className="cursor-pointer transition-all duration-150"
+                  style={{
+                    filter: isSelected ? "drop-shadow(0px 0px 6px rgba(255,255,255,0.7))" : undefined,
+                    transformOrigin: `${cx}px ${cy}px`,
+                  }}
+                  onMouseEnter={() => setActiveCategory(slice.name)}
+                  onMouseLeave={() => setActiveCategory(null)}
+                  onClick={() => setActiveCategory((prev) => (prev === slice.name ? null : slice.name))}
+                >
+                  <title>{`${slice.emoji} ${slice.name}: ${slice.pct.toFixed(1)}% (Rp ${slice.spent.toLocaleString("id-ID")})`}</title>
+                </path>
+              );
+            })}
           </svg>
+
+          {/* Interactive Center Overlay - Spacious inner area without slice overlap */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none p-4 text-center select-none">
+            <div className="flex flex-col items-center">
+              <span className="text-[9px] sm:text-[10px] font-mono uppercase tracking-wider text-zinc-400 font-bold leading-none">
+                TOTAL SPENT
+              </span>
+              <span className="font-mono font-bold text-xs sm:text-sm text-white mt-1 leading-none">
+                Rp {totalFilteredExpense.toLocaleString("id-ID")}
+              </span>
+            </div>
+
+            {activeItem ? (
+              <div className="flex flex-col items-center mt-2 pt-1.5 border-t border-zinc-700/80 animate-in fade-in duration-150 w-full max-w-[140px]">
+                <span className="text-xs sm:text-sm font-bold text-yellow-400 truncate max-w-full leading-tight" title={activeItem.name}>
+                  {activeItem.emoji} {activeItem.name}
+                </span>
+                <div className="flex items-center gap-1 font-mono text-[10px] sm:text-[11px] mt-1 leading-none">
+                  <span className="text-white font-bold">{activeItem.pct.toFixed(1)}%</span>
+                  <span className="text-zinc-500">•</span>
+                  <span className="text-zinc-300 font-bold">Rp {activeItem.spent.toLocaleString("id-ID")}</span>
+                </div>
+              </div>
+            ) : (
+              <span className="text-[9px] text-zinc-500 mt-1.5 leading-none">
+                Hover / Tap slice
+              </span>
+            )}
+          </div>
         </div>
-        <div className="flex justify-between text-[10px] text-zinc-400 font-mono px-1">
-          <span style={{ paddingLeft: `${leftPadding - 8}px` }}>{formatDateLabel(manaPoints[0].date)}</span>
-          <span>{formatDateLabel(manaPoints[manaPoints.length - 1].date)}</span>
+
+        {/* Legend / Breakdown List - Name on Top, Percent & Nominal on Bottom */}
+        <div className="flex flex-col gap-1.5 pt-3 border-t border-zinc-800">
+          <div className="flex justify-between items-center text-[10px] text-zinc-400 font-mono px-0.5">
+            <span>CATEGORY BREAKDOWN</span>
+            <span>PERCENT • NOMINAL</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
+            {sliceData.map((slice) => {
+              const isSelected = activeCategory === slice.name;
+              return (
+                <button
+                  key={slice.name}
+                  type="button"
+                  onMouseEnter={() => setActiveCategory(slice.name)}
+                  onMouseLeave={() => setActiveCategory(null)}
+                  onClick={() => setActiveCategory((prev) => (prev === slice.name ? null : slice.name))}
+                  className={`flex flex-col gap-1 p-2 border-2 text-xs transition-all text-left ${
+                    isSelected
+                      ? "border-white bg-zinc-800 shadow-[2px_2px_0px_#fff]"
+                      : "border-black bg-zinc-900 hover:bg-zinc-800 shadow-[1px_1px_0px_#000]"
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 min-w-0 w-full">
+                    <span
+                      className="w-3 h-3 border border-black flex-shrink-0"
+                      style={{ backgroundColor: slice.color }}
+                    />
+                    <span className="truncate text-white font-bold text-xs" title={slice.name}>
+                      {slice.emoji} {slice.name}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between font-mono text-[11px] pl-4.5 w-full">
+                    <span className="text-yellow-400 font-bold">{slice.pct.toFixed(1)}%</span>
+                    <span className="text-zinc-300 font-medium">Rp {slice.spent.toLocaleString("id-ID")}</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
     );
@@ -215,23 +310,32 @@ export default function AnalyticsTab({
 
   return (
     <div className={`flex flex-col gap-5 text-left transition-opacity duration-200 ${isUpdating ? "opacity-60" : "opacity-100"}`}>
-      
+
       {/* Analytics Filters Control Panel */}
       <div className="border-4 border-black p-3 bg-zinc-950 flex flex-col gap-2.5 shadow-[3px_3px_0px_#000] text-white">
         <h4 className="font-cinzel font-bold text-sm border-b border-black pb-1">🔮 Filter Transactions</h4>
-        
+
         {/* Time range buttons */}
-        <div className="grid grid-cols-3 sm:grid-cols-6 gap-1">
-          {(["day", "week", "month", "year", "all", "custom"] as const).map((r) => (
+        <div className="grid grid-cols-3 sm:grid-cols-4 gap-1">
+          {[
+            { value: "day", label: "Day" },
+            { value: "week", label: "Week" },
+            { value: "this_month", label: "This Month" },
+            { value: "month", label: "30 Days" },
+            { value: "year", label: "Year" },
+            { value: "all", label: "All Time" },
+            { value: "custom", label: "📅 Custom" },
+          ].map((r) => (
             <button
-              key={r}
+              key={r.value}
               type="button"
-              onClick={() => setFilterTime(r)}
-              className={`py-1.5 px-1 border border-black text-xs font-bold uppercase transition-all ${
-                filterTime === r ? "bg-sky-blue text-dungeon shadow-[1px_1px_0px_#000]" : "bg-zinc-900 text-zinc-300 hover:bg-zinc-800"
-              }`}
+              onClick={() => setFilterTime(r.value as any)}
+              className={`py-1.5 px-1 border border-black text-xs font-bold uppercase transition-all truncate text-center ${filterTime === r.value
+                  ? "bg-sky-blue text-dungeon shadow-[1px_1px_0px_#000]"
+                  : "bg-zinc-900 text-zinc-300 hover:bg-zinc-800"
+                } ${r.value === "custom" ? "col-span-3 sm:col-span-2 md:col-span-1" : ""}`}
             >
-              {r === "all" ? "All Time" : r === "custom" ? "📅 Custom" : r}
+              {r.label}
             </button>
           ))}
         </div>
@@ -286,10 +390,10 @@ export default function AnalyticsTab({
         </div>
       </div>
 
-      {/* 1. The Mana Curve */}
+      {/* 1. Spending Breakdown Pie / Donut Chart */}
       <div className="flex flex-col gap-1.5">
-        <h4 className="font-cinzel font-bold text-xs text-white">📈 Balance Trend</h4>
-        {renderManaCurveSvg()}
+        <h4 className="font-cinzel font-bold text-xs text-white">🥧 Spending Breakdown</h4>
+        {renderSpendingPieChart()}
       </div>
 
       {/* 2. Gold Coins Gathered vs Spent */}
@@ -299,13 +403,13 @@ export default function AnalyticsTab({
           {/* Income Pillar */}
           <div className="flex flex-col items-center gap-2">
             <div className="w-8 h-24 bg-zinc-800 border-2 border-black flex flex-col justify-end overflow-hidden relative shadow-[1px_1px_0px_#000]">
-              <div 
-                className="bg-green-500 w-full transition-all duration-500" 
-                style={{ 
-                  height: totalFilteredIncome + totalFilteredExpense > 0 
-                    ? `${(totalFilteredIncome / (totalFilteredIncome + totalFilteredExpense)) * 100}%` 
-                    : "0%" 
-                }} 
+              <div
+                className="bg-green-500 w-full transition-all duration-500"
+                style={{
+                  height: totalFilteredIncome + totalFilteredExpense > 0
+                    ? `${(totalFilteredIncome / (totalFilteredIncome + totalFilteredExpense)) * 100}%`
+                    : "0%"
+                }}
               />
             </div>
             <div className="text-center leading-none">
@@ -317,13 +421,13 @@ export default function AnalyticsTab({
           {/* Expense Pillar */}
           <div className="flex flex-col items-center gap-2">
             <div className="w-8 h-24 bg-zinc-800 border-2 border-black flex flex-col justify-end overflow-hidden relative shadow-[1px_1px_0px_#000]">
-              <div 
-                className="bg-red-500 w-full transition-all duration-500" 
-                style={{ 
-                  height: totalFilteredIncome + totalFilteredExpense > 0 
-                    ? `${(totalFilteredExpense / (totalFilteredIncome + totalFilteredExpense)) * 100}%` 
-                    : "0%" 
-                }} 
+              <div
+                className="bg-red-500 w-full transition-all duration-500"
+                style={{
+                  height: totalFilteredIncome + totalFilteredExpense > 0
+                    ? `${(totalFilteredExpense / (totalFilteredIncome + totalFilteredExpense)) * 100}%`
+                    : "0%"
+                }}
               />
             </div>
             <div className="text-center leading-none">
@@ -344,7 +448,7 @@ export default function AnalyticsTab({
             categoriesList.map((cat) => {
               const spent = filteredCategorySpentMap[cat.name] || 0;
               const limit = cat.budgetLimit ? parseFloat(cat.budgetLimit) : null;
-              
+
               let percentage = 0;
               if (limit) {
                 percentage = Math.min((spent / limit) * 100, 100);

@@ -17,7 +17,7 @@ async function getUserId() {
 }
 
 export interface RecentTransactionsFilters {
-  filter?: "all" | "day" | "week" | "month" | "3months" | "6months" | "year" | "custom";
+  filter?: "all" | "day" | "week" | "this_month" | "month" | "3months" | "6months" | "year" | "custom";
   startDate?: string;
   endDate?: string;
   category?: string;
@@ -50,6 +50,11 @@ export async function getRecentTransactions(filters: RecentTransactionsFilters =
         end.setHours(23, 59, 59, 999);
         conditions.push(lte(transactions.createdAt, end));
       }
+    } else if (filter === "this_month") {
+      const currentMonthStart = new Date();
+      currentMonthStart.setDate(1);
+      currentMonthStart.setHours(0, 0, 0, 0);
+      conditions.push(gte(transactions.createdAt, currentMonthStart));
     } else if (filter && filter !== "all") {
       const dateLimit = new Date();
       if (filter === "day") {
@@ -125,6 +130,34 @@ export async function getRecentTransactions(filters: RecentTransactionsFilters =
   }
 }
 
+export async function getPocketTransactions(pocketId: string) {
+  try {
+    const userId = await getUserId();
+    const result = await db
+      .select({
+        id: transactions.id,
+        amount: transactions.amount,
+        type: transactions.type,
+        description: transactions.description,
+        createdAt: transactions.createdAt,
+        pocketName: pockets.name,
+        categoryName: categories.name,
+        categoryIcon: categories.icon,
+      })
+      .from(transactions)
+      .leftJoin(pockets, eq(transactions.pocketId, pockets.id))
+      .leftJoin(categories, eq(transactions.categoryId, categories.id))
+      .where(and(eq(transactions.userId, userId), eq(transactions.pocketId, pocketId)))
+      .orderBy(desc(transactions.createdAt))
+      .limit(50);
+
+    return { data: result };
+  } catch (error: any) {
+    console.error("Failed to fetch pocket transactions:", error);
+    return { data: [], error: error.message || "Failed to load pocket transactions." };
+  }
+}
+
 export async function getCurrentMonthCategorySpent() {
   try {
     const userId = await getUserId();
@@ -163,7 +196,7 @@ export async function getCurrentMonthCategorySpent() {
 }
 
 export interface AnalyticsFilters {
-  filterTime?: "day" | "week" | "month" | "year" | "custom" | "all";
+  filterTime?: "day" | "week" | "this_month" | "month" | "year" | "custom" | "all";
   startDate?: string;
   endDate?: string;
   filterPocket?: string;
@@ -204,6 +237,11 @@ export async function getAnalyticsData(filters: AnalyticsFilters = {}) {
         end.setHours(23, 59, 59, 999);
         conditions.push(lte(transactions.createdAt, end));
       }
+    } else if (filterTime === "this_month") {
+      const currentMonthStart = new Date();
+      currentMonthStart.setDate(1);
+      currentMonthStart.setHours(0, 0, 0, 0);
+      conditions.push(gte(transactions.createdAt, currentMonthStart));
     } else if (filterTime && filterTime !== "all") {
       const dateLimit = new Date();
       if (filterTime === "day") {

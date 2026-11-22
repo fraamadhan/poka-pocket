@@ -223,7 +223,7 @@ export default function DashboardClient({
 
   // Recent Activity list state (Processed in Backend)
   const [recentPage, setRecentPage] = useState(1);
-  const [recentFilter, setRecentFilter] = useState<"day" | "week" | "month" | "3months" | "6months" | "year" | "custom" | "all">("all");
+  const [recentFilter, setRecentFilter] = useState<"day" | "week" | "this_month" | "month" | "3months" | "6months" | "year" | "custom" | "all">("all");
   const [recentStartDate, setRecentStartDate] = useState("");
   const [recentEndDate, setRecentEndDate] = useState("");
   const [recentCategory, setRecentCategory] = useState("all");
@@ -295,7 +295,7 @@ export default function DashboardClient({
 
   const formatTransactionDateTime = (dateInput: Date | string) => {
     const d = new Date(dateInput);
-    const datePart = d.toLocaleDateString("en-US", { day: "numeric", month: "short" });
+    const datePart = d.toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
     const hours = String(d.getHours()).padStart(2, '0');
     const minutes = String(d.getMinutes()).padStart(2, '0');
     return `${datePart}, ${hours}:${minutes}`;
@@ -398,6 +398,19 @@ export default function DashboardClient({
       }
     }
   }, [pocketsList]);
+
+  // Lock body scroll only when full-screen backdrop modals are open
+  useEffect(() => {
+    const anyModalOpen = isTransferModalOpen || isRecurringModalOpen;
+
+    if (anyModalOpen) {
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = prevOverflow;
+      };
+    }
+  }, [isTransferModalOpen, isRecurringModalOpen]);
 
   // Offline Sync
   useEffect(() => {
@@ -1074,7 +1087,7 @@ export default function DashboardClient({
 
           {/* PWA Custom Install Banner */}
           {showInstallBanner && (
-            <div className="bg-baby-pink border-4 border-black p-3 flex flex-col gap-2 shadow-[4px_4px_0px_#000] text-dungeon text-left relative animate-shake">
+            <div className="md:hidden bg-baby-pink border-4 border-black p-3 flex flex-col gap-2 shadow-[4px_4px_0px_#000] text-dungeon text-left relative animate-shake">
               <div className="flex justify-between items-start gap-1">
                 <div>
                   <h4 className="font-cinzel font-bold text-sm text-dungeon">📲 Add to Home Page</h4>
@@ -1113,7 +1126,7 @@ export default function DashboardClient({
                 sessionStorage.setItem("poka_pocket_install_minimized", "false");
                 setInstallMinimized(false);
               }}
-              className="w-full py-2 bg-baby-pink hover:bg-pink-300 text-dungeon border-4 border-black font-cinzel text-xs font-bold shadow-[3px_3px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center gap-1.5"
+              className="md:hidden w-full py-2 bg-baby-pink hover:bg-pink-300 text-dungeon border-4 border-black font-cinzel text-xs font-bold shadow-[3px_3px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center gap-1.5"
             >
               📲 ADD TO HOME PAGE
             </button>
@@ -1188,6 +1201,7 @@ export default function DashboardClient({
             <LogsTab
               pocketsList={pocketsList}
               categoriesList={categoriesList}
+              totalBalance={totalBalance}
               categorySpentMap={categorySpentMap}
               tourActive={tourActive}
               tourStep={tourStep}
@@ -1301,8 +1315,8 @@ export default function DashboardClient({
           >
             ↩ LOGOUT
           </button>
-          <span className="font-vt323 text-base text-sky-blue">
-            BALANCE: Rp {totalBalance.toLocaleString("id-ID")}
+          <span className="font-mono text-xs text-zinc-500">
+            POKA POCKET
           </span>
         </footer>
 
